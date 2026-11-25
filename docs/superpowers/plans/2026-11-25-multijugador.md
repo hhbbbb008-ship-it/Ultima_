@@ -36,7 +36,7 @@
 
 ---
 
-### Tarea 1: Reglas de la sala (lógica pura)
+### Task 1: Reglas de la sala (lógica pura)
 
 **Archivos:**
 - Crear: `src/red/protocolo.js`, `servidor/SalaLogica.js`, `servidor/SalaLogica.test.js`, `package.json`, `.gitignore`
@@ -53,7 +53,7 @@
 - [ ] **Paso 5:** Ejecutar `npm test`. Esperado: todas pasan.
 - [ ] **Paso 6:** Commit `feat: reglas de sala y protocolo`.
 
-### Tarea 2: Worker y Durable Object con hibernación
+### Task 2: Worker y Durable Object con hibernación
 
 **Archivos:**
 - Crear: `servidor/index.js`, `servidor/Sala.js`, `wrangler.jsonc`, `.assetsignore`, `pruebas/red_sala.mjs`
@@ -70,7 +70,7 @@
 - [ ] **Paso 5:** Ejecutar la prueba otra vez. Esperado: todas las comprobaciones pasan.
 - [ ] **Paso 6:** Commit `feat: servidor de sala con Durable Object`.
 
-### Tarea 3: Cliente de red y menú de sala
+### Task 3: Cliente de red y menú de sala
 
 **Archivos:**
 - Crear: `src/red/Red.js`, `pruebas/multi.py`
@@ -88,7 +88,7 @@
 - [ ] **Paso 4:** Ejecutar `multi.py` y las pruebas existentes (`humo`, `juego`, `movil`). Esperado: todo pasa.
 - [ ] **Paso 5:** Añadir `src/red/*.js` al `sw.js`, subir la versión de caché; commit `feat: cliente de red y menú de sala`.
 
-### Tarea 4: Jugadores remotos visibles
+### Task 4: Jugadores remotos visibles
 
 **Archivos:**
 - Crear: `src/red/Remotos.js`
@@ -105,7 +105,7 @@
 - [ ] **Paso 4:** Ejecutar `multi.py` y todas las pruebas existentes. Esperado: pasan.
 - [ ] **Paso 5:** Commit `feat: jugadores remotos`.
 
-### Tarea 5: Oleadas y zombis compartidos
+### Task 5: Oleadas y zombis compartidos
 
 **Archivos:**
 - Modificar: `src/enemigos/GestorZombis.js`, `src/juego/Oleadas.js`, `src/enemigos/Zombi.js`, `src/juego/Partida.js`, `pruebas/multi.py`
@@ -121,7 +121,7 @@
 - [ ] **Paso 4:** Ejecutar `multi.py` y todas las pruebas existentes (`juego`, `municion`, `tienda`, `dash`). Esperado: pasan.
 - [ ] **Paso 5:** Commit `feat: zombis y oleadas compartidos`.
 
-### Tarea 6: Disparos y daño
+### Task 6: Disparos y daño
 
 **Archivos:**
 - Modificar: `src/armas/SistemaArmas.js`, `src/enemigos/GestorZombis.js`, `src/red/Remotos.js`, `pruebas/multi.py`
@@ -135,7 +135,7 @@
 - [ ] **Paso 4:** Ejecutar `multi.py` y todas las pruebas existentes. Esperado: pasan.
 - [ ] **Paso 5:** Commit `feat: disparos y daño en sala`.
 
-### Tarea 7: Cuerpo de jugador y skins
+### Task 7: Cuerpo de jugador y skins
 
 **Archivos:**
 - Crear: `herramientas/jugador_cuerpo.py`, `assets/modelos/jugador.glb`, `src/jugador/CuerpoJugador.js`
@@ -151,7 +151,7 @@
 - [ ] **Paso 4:** Ejecutar `multi.py` y todas las pruebas existentes. Esperado: pasan.
 - [ ] **Paso 5:** Commit `feat: cuerpo de jugador y skins`.
 
-### Tarea 8: Caída, salida del anfitrión y medición de uso
+### Task 8: Caída, salida del anfitrión y medición de uso
 
 **Archivos:**
 - Modificar: `src/juego/Partida.js`, `src/red/Red.js`, `src/red/Remotos.js`, `src/ui/Interfaz.js`, `pruebas/multi.py`
@@ -167,7 +167,7 @@
 - [ ] **Paso 4:** Ejecutar todo (`multi.py`, `uso_red.mjs`, pruebas existentes). Esperado: pasa.
 - [ ] **Paso 5:** Commit `feat: reglas de sala y medición de uso`.
 
-### Tarea 9: Despliegue desde GitHub y documentación
+### Task 9: Despliegue desde GitHub y documentación
 
 **Archivos:**
 - Modificar: `README.md`, `sw.js`
