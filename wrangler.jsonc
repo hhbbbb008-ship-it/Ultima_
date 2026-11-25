@@ -1,0 +1,12 @@
+{
+  // Worker de Última Noche: sirve el juego (archivos estáticos) y las salas multijugador.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "square-river-fc0b",
+  "main": "servidor/index.js",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": ".", "binding": "ASSETS" },
+  "durable_objects": { "bindings": [{ "name": "SALA", "class_name": "Sala" }] },
+  // Plan gratis: solo Durable Objects con SQLite.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sala"] }],
+  "observability": { "enabled": true }
+}

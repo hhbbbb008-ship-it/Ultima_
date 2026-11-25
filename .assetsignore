@@ -1,0 +1,14 @@
+servidor
+docs
+pruebas
+herramientas
+node_modules
+.wrangler
+.git
+.gitignore
+.assetsignore
+.superpowers
+wrangler.jsonc
+package.json
+package-lock.json
+README.md
