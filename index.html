@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#07090d">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-512.png">
+  <title>Última Noche — Supervivencia zombi</title>
+  <link rel="stylesheet" href="css/estilos.css">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+  </script>
+</head>
+<body>
+  <canvas id="lienzo"></canvas>
+
+  <!-- ===================== HUD ===================== -->
+  <div id="hud" class="oculto">
+    <div id="vinetaSangre"></div>
+    <div id="pantallaDano"></div>
+    <div id="indicadoresDano"></div>
+    <div id="mira"><i class="h"></i><i class="v"></i><b></b></div>
+    <div id="reticula"><i class="r a"></i><i class="r b"></i><i class="r i"></i><i class="r d"></i><b></b></div>
+    <div id="marcaImpacto"><i></i><i></i><i></i><i></i></div>
+
+    <div id="hudSup">
+      <div class="bloque oleada"><span>OLEADA</span><b id="hOleada">1</b></div>
+      <div class="bloque restantes"><span id="hEstadoOleada">ZOMBIS</span><b id="hRestantes">0</b></div>
+    </div>
+    <div id="hudPuntos">
+      <span>PUNTUACIÓN</span><b id="hTotal">0</b>
+      <div class="moneda">PUNTOS <b id="hPuntos">500</b></div>
+      <div class="monedas" title="Monedas de la Tienda"><i></i><b id="hMonedas">0</b></div>
+      <div id="hRacha"></div>
+    </div>
+    <div id="popups"></div>
+    <div id="aviso"></div>
+    <div id="prompt"></div>
+
+    <div id="hudSalud">
+      <div class="cruz"></div>
+      <div class="barras">
+        <div class="barra salud"><i id="hSaludBarra"></i></div>
+        <div id="hDash" title="Cargas de dash (Q)"><i></i><i></i><i></i></div>
+        <div class="barra chaleco"><i id="hChalecoBarra"></i></div>
+      </div>
+      <b id="hSalud">100</b>
+      <div id="hBotiquines" title="Botiquines (H)"><i></i><b id="hBotiquinesN">0</b></div>
+      <div id="hGranadas" title="Granadas (G)"><i></i><b id="hGranadasN">0</b></div>
+      <div id="hMolotovs" class="contador" title="Molotovs (T)"><i>✸</i><b id="hMolotovsN">0</b></div>
+      <div id="hChalecos" class="contador" title="Chalecos (C)"><i>◈</i><b id="hChalecosN">0</b></div>
+      <div id="hBebidas" class="contador" title="Bebidas energéticas (B)"><i>⚡</i><b id="hBebidasN">0</b></div>
+      <span id="hLinterna" title="Linterna (F)">LINTERNA</span>
+    </div>
+    <div id="hudArma">
+      <div id="hRanuras"></div>
+      <div class="nombre" id="hArmaNombre">P-9 CENTINELA</div>
+      <div class="municion"><b id="hMunicion">12</b><span>/</span><em id="hReserva">72</em></div>
+      <div class="barra recarga"><i id="hRecarga"></i></div>
+    </div>
+  </div>
+
+  <!-- ===================== CONTROLES TÁCTILES ===================== -->
+  <div id="tactil">
+    <div id="tZonaMover"></div>
+    <div id="tZonaMirar"></div>
+    <div id="tStick"><i></i></div>
+    <button class="tb pausa" data-t="pausa" aria-label="Pausa">II</button>
+    <button class="tb disparo" data-t="disparar" aria-label="Disparar"></button>
+    <button class="tb disparo2" data-t="disparar" aria-label="Disparar"></button>
+    <button class="tb apuntar" data-t="apuntarAlternar">APUNTAR</button>
+    <button class="tb recargar" data-t="recargar">R</button>
+    <button class="tb saltar" data-t="saltar">▲</button>
+    <button class="tb cuchillo" data-t="cuchillo">⚔</button>
+    <button class="tb cambiar" data-t="armaSiguiente">⇄</button>
+    <button class="tb botiquin" data-t="botiquin">+</button>
+    <button class="tb granada" data-t="granada">●</button>
+    <button class="tb molotov" data-t="molotov">✸</button>
+    <button class="tb chaleco" data-t="chaleco">◈</button>
+    <button class="tb bebida" data-t="bebida">⚡</button>
+    <button class="tb dash" data-t="dash" aria-label="Dash">⇥</button>
+    <button class="tb linterna" data-t="linterna">☀</button>
+    <button class="tb comprar oculto" data-t="interactuar">COMPRAR</button>
+    <div class="indicadorCarrera">CORRIENDO</div>
+  </div>
+  <!-- ===================== EDITOR DEL HUD TÁCTIL ===================== -->
+  <div id="editorHud">
+    <span id="edNombre"></span>
+    <label>Tamaño <input type="range" id="edTam" min="0.5" max="1.8" step="0.05" value="1"></label>
+    <button id="edMoverBarra" title="Mover esta barra arriba o abajo">⇅</button>
+    <button id="edRestablecer">Restablecer</button>
+    <button id="edCancelar">Cancelar</button>
+    <button id="edListo" class="primario">Guardar</button>
+  </div>
+  <div id="girar"><div>⟳</div><p>Gira el dispositivo<br>para jugar en horizontal</p></div>
+  <div id="cargandoMapa"></div>
+  <div id="notificacion"></div>
+
+  <div id="rendimiento" class="oculto"></div>
+
+  <!-- ===================== CARGA ===================== -->
+  <div id="carga" class="pantalla visible">
+    <div class="logo"><h1>ÚLTIMA<span>NOCHE</span></h1><p>Supervivencia zombi</p></div>
+    <div class="progreso"><i id="cargaBarra"></i></div>
+    <p id="cargaTexto">Preparando el barrio…</p>
+    <button id="bEntrar" class="oculto">HAZ CLIC PARA ENTRAR</button>
+    <p class="nota">Recomendado: Chrome, Edge o Firefox actualizados. Ratón y teclado, o pantalla táctil en móvil y tableta.</p>
+  </div>
+
+  <!-- ===================== MENÚ PRINCIPAL ===================== -->
+  <div id="menuPrincipal" class="pantalla">
+    <div class="columna">
+      <div class="logo"><h1>ÚLTIMA<span>NOCHE</span></h1><p>Supervivencia zombi</p></div>
+      <nav class="menu">
+        <button data-accion="jugar">Jugar</button>
+        <button data-accion="continuar" id="bContinuar">Continuar</button>
+        <button data-accion="modos">Mapa y modo</button>
+        <button data-accion="tienda" id="bTienda">Tienda</button>
+        <button data-accion="ajustes:general">Configuración</button>
+        <button data-accion="ajustes:graficos">Configuración gráfica</button>
+        <button data-accion="ajustes:controles">Configuración de controles</button>
+        <button data-accion="creditos">Créditos</button>
+      </nav>
+      <p class="pie" id="pieMenu"></p>
+    </div>
+  </div>
+
+  <!-- ===================== MODOS ===================== -->
+  <div id="pantallaModos" class="pantalla">
+    <div class="panel ancho">
+      <h2>MAPA Y MODO</h2>
+      <h3>Mapa</h3>
+      <div id="listaMapas" class="mapas"></div>
+      <h3>Modo de juego</h3>
+      <div id="listaModos" class="modos"></div>
+      <div class="botones"><button data-accion="volver">Volver</button><button class="primario" data-accion="jugar">Jugar</button></div>
+    </div>
+  </div>
+
+  <!-- ===================== EQUIPAMIENTO ===================== -->
+  <div id="pantallaEquipo" class="pantalla">
+    <div class="panel ancho">
+      <h2>EQUIPAMIENTO</h2>
+      <p class="info" id="equipoInfo"></p>
+      <h3>Arma secundaria</h3>
+      <div id="listaSecundaria" class="armasSel"></div>
+      <h3>Arma principal</h3>
+      <div id="listaPrincipal" class="armasSel"></div>
+      <h3>Cuerpo a cuerpo <small>(ranura 5 · opcional)</small></h3>
+      <div id="listaCuerpo" class="armasSel"></div>
+      <div class="botones"><button data-accion="tienda">Tienda</button><button data-accion="volver">Volver</button><button class="primario" data-accion="empezar">¡A la noche!</button></div>
+    </div>
+  </div>
+
+  <!-- ===================== TIENDA ===================== -->
+  <div id="pantallaTienda" class="pantalla">
+    <div class="panel ancho">
+      <h2>TIENDA <span class="cartera"><i></i><b id="tMonedas">0</b> monedas</span></h2>
+      <p class="info">Gana monedas matando zombis (más con los grandes y con tiros a la cabeza) y superando oleadas. Las armas desbloqueadas quedan disponibles en el equipamiento; los suministros van a tu reserva y te llevas una parte al empezar cada partida. La katana no se compra: se gana matando 5 Colosos.</p>
+      <h3>Suministros</h3>
+      <div id="tSuministros" class="armasSel"></div>
+      <h3>Armas para el equipamiento</h3>
+      <div id="tArmas" class="armasSel"></div>
+      <div class="botones"><button class="primario" data-accion="volver">Volver</button></div>
+    </div>
+  </div>
+
+  <!-- ===================== AJUSTES ===================== -->
+  <div id="pantallaAjustes" class="pantalla">
+    <div class="panel ancho">
+      <h2>CONFIGURACIÓN</h2>
+      <div class="pestanas">
+        <button data-pestana="general">General</button>
+        <button data-pestana="graficos">Gráficos</button>
+        <button data-pestana="audio">Audio</button>
+        <button data-pestana="controles">Controles</button>
+      </div>
+      <div class="contenido">
+        <section data-seccion="general" id="secGeneral"></section>
+        <section data-seccion="graficos">
+          <div class="perfiles" id="perfiles"></div>
+          <p class="info" id="infoGraficos">Los cambios se aplican al instante, sin reiniciar la partida.</p>
+          <div id="opcionesGraficas" class="opciones"></div>
+        </section>
+        <section data-seccion="audio" id="secAudio"></section>
+        <section data-seccion="controles" id="secControles"></section>
+      </div>
+      <div class="botones"><button class="primario" data-accion="volver">Volver</button></div>
+    </div>
+  </div>
+
+  <!-- ===================== CRÉDITOS ===================== -->
+  <div id="pantallaCreditos" class="pantalla">
+    <div class="panel">
+      <h2>CRÉDITOS</h2>
+      <div class="creditos">
+        <p><b>Última Noche</b> — shooter de supervivencia por oleadas para navegador.</p>
+        <p>Diseño, programación, modelos, texturas, sonido y música: generados por código para este proyecto. No usa recursos de otros juegos.</p>
+        <p>Inspirado en los modos de supervivencia zombi por oleadas de los shooters de PC.</p>
+        <h3>Tecnología</h3>
+        <p>Three.js (licencia MIT, © 2010-2025 three.js authors) · WebGL 2 · Web Audio API · Pointer Lock API.</p>
+        <h3>Sistemas</h3>
+        <p>Texturas y mapas de normales procedurales · Zombis con esqueleto y animación procedural · Navegación por campo de flujo · Postproceso con GTAO, bloom, profundidad de campo, FXAA/SMAA/MSAA · Reflejos planares · Audio sintetizado con formantes y convolución.</p>
+      </div>
+      <div class="botones"><button class="primario" data-accion="volver">Volver</button></div>
+    </div>
+  </div>
+
+  <!-- aviso cuando el navegador no deja capturar el ratón (la partida espera en pausa) -->
+  <div id="esperaRaton"><div><b>HAZ CLIC PARA SEGUIR JUGANDO</b><small>El juego necesita capturar el ratón · Esc: menú de pausa</small></div></div>
+
+  <!-- ===================== PAUSA ===================== -->
+  <div id="menuPausa" class="pantalla">
+    <div class="panel estrecho">
+      <h2>PAUSA</h2>
+      <nav class="menu">
+        <button class="primario" data-accion="reanudar">Reanudar</button>
+        <button data-accion="ajustes:general">Configuración</button>
+        <button data-accion="ajustes:graficos">Gráficos</button>
+        <button data-accion="ajustes:controles">Controles</button>
+        <button data-accion="editarHud" class="soloTactil">Personalizar HUD</button>
+        <button data-accion="reiniciar">Reiniciar partida</button>
+        <button data-accion="salir">Salir al menú</button>
+      </nav>
+      <p class="pie">Tu progreso se guarda al comenzar cada oleada.</p>
+    </div>
+  </div>
+
+  <!-- ===================== FIN ===================== -->
+  <div id="pantallaFin" class="pantalla">
+    <div class="panel">
+      <h2 id="finTitulo">HAS MUERTO</h2>
+      <p id="finSub"></p>
+      <div id="finStats" class="stats"></div>
+      <div class="botones"><button data-accion="salir">Menú principal</button><button class="primario" data-accion="otra">Jugar de nuevo</button></div>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+  <script>
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
