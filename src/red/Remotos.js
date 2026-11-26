@@ -30,7 +30,7 @@ export class Remotos {
     this.skinPorDefecto = SKIN_DEFECTO;
     ctx.eventos.on('arma:disparo', () => { if (ctx.partida.modoSala) this.disparos++; });
     const red = ctx.red;
-    red.alTick(() => { const P = ctx.partida; if (P.modoSala && P.estado !== 'menu' && P.estado !== 'fin') this.enviarEstado(); });
+    red.alTick(() => { if (ctx.partida.emitiendoSala) this.enviarEstado(); });
     red.alMensaje(T.JUGADOR, m => this.aplicar(m));
     red.alMensaje(T.SALIO, m => this.quitar(m.id));
     ctx.eventos.on('red:caida', () => this.limpiar());

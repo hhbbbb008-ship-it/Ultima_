@@ -150,7 +150,7 @@ async function arrancar() {
     ctx.partida.actualizar(dt);
     if (ctx.partida.modoSala) ctx.remotos.actualizar(dt);
     if (ctx.red.activa) ctx.red.vaciar(dt);
-    if (!dibujar) return;
+    if (!dibujar) { ctx.entrada.finFotograma(); return; }   // las pulsaciones de un fotograma no se repiten
     ctx.mundo.actualizar(dt, ctx.camara, DISTANCIAS[ctx.ajustes.g.distancia]);
     ctx.iluminacion.actualizar(dt, ctx.camara, t);
     ctx.particulas.setEscala(ctx.renderer.domElement.height, ctx.camara.fov);

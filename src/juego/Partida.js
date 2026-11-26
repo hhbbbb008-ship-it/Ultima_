@@ -39,21 +39,26 @@ export class Partida {
     const red = this.ctx.red;
     if (!red) return;
     // el anfitrión anuncia la partida; quien llega tarde la recibe al entrar
+    // cada partida del anfitrión tiene un número: el mismo número = re-anuncio para quien llega tarde
     red.alMensaje(T.EVENTO, m => {
-      if (m.e === 'inicio' && !red.esAnfitrion && !(this.modoSala && this.jugando && this.mapa === m.mapa)) this.nuevaSala(m.modo, m.mapa);
+      if (m.e !== 'inicio' || red.esAnfitrion) return;
+      const enEsta = this.modoSala && m.pid === this.pidSala && this.estado !== 'menu' && this.estado !== 'fin';
+      if (!enEsta) { this.pidSala = m.pid; this.nuevaSala(m.modo, m.mapa); }
     });
-    red.alMensaje(T.ENTRO, () => { if (red.esAnfitrion && this.modoSala) this.anunciarInicio(); });
+    // quien entra a mitad de partida la recibe; con el anfitrión en la pantalla final, espera a la siguiente
+    red.alMensaje(T.ENTRO, () => { if (red.esAnfitrion && this.modoSala && this.estado !== 'fin') this.anunciarInicio(); });
     red.alMensaje(T.FIN, m => {
       if (!this.modoSala || red.esAnfitrion || (m.motivo !== 'victoria' && m.motivo !== 'derrota')) return;
       this.terminar(m.motivo === 'victoria');
     });
     // los caídos vuelven al terminar cada oleada (en el cliente el evento lo genera la replicación)
-    this.ctx.eventos.on('oleada:fin', () => { if (this.modoSala && this.estado === 'caido') this.reaparecer(); });
+    this.ctx.eventos.on('oleada:fin', () => { if (this.modoSala && (this.estado === 'caido' || (this.estado === 'pausa' && this.trasPausa === 'caido'))) this.reaparecer(); });
   }
 
   /** En sala, morir te deja como espectador hasta que acabe la oleada. */
   caer() {
-    this.estado = 'caido'; this.caidoT = 0; this.todosCaidosT = 0;
+    if (this.estado === 'pausa') this.trasPausa = 'caido'; else this.estado = 'caido';
+    this.caidoT = 0; this.todosCaidosT = 0;
     this.ctx.interfaz.aviso('HAS CAÍDO', 'Reaparecerás al terminar la oleada si tu equipo resiste', 4, 'jefe');
     this.ctx.audio.setMusica('derrota');
   }
@@ -89,10 +94,11 @@ export class Partida {
     if (this.todosCaidosT > 1) this.terminar(false);
   }
 
-  anunciarInicio() { this.ctx.red.enviar(T.EVENTO, { e: 'inicio', modo: this.modo, mapa: this.mapa }); }
+  anunciarInicio() { this.ctx.red.enviar(T.EVENTO, { e: 'inicio', modo: this.modo, mapa: this.mapa, pid: this.pidSala }); }
 
   /** Partida en sala: el anfitrión la empieza y la anuncia; los clientes la siguen. */
   async nuevaSala(modo, mapa, equipo = this.ctx.interfaz?.equipo) {
+    if (this.ctx.red.esAnfitrion) this.pidSala = (this.pidSala || 0) + 1;
     await this.nueva(modo, mapa, equipo ? { ...equipo } : this.equipo, true);
     if (this.ctx.red.esAnfitrion) this.anunciarInicio();
   }
@@ -132,7 +138,7 @@ export class Partida {
   /** equipo: { secundaria, principal } de la pantalla de equipamiento (se recuerda para "jugar de nuevo"). */
   async nueva(modo = this.modo, mapa = this.mapa, equipo = this.equipo, sala = false) {
     const c = this.ctx;
-    if (this.modoSala && !sala) this.ctx.red?.cerrar();
+    if (!sala && this.ctx.red?.activa) { this.ctx.red.cerrar(); this.ctx.remotos?.limpiar(); }   // partida de un jugador: fuera de la sala
     this.modoSala = sala;
     this.modo = modo; this.mapa = MAPAS[mapa] ? mapa : 'barrio'; this.equipo = equipo;
     await c.cargarMapa(this.mapa);
@@ -151,6 +157,8 @@ export class Partida {
   async continuar() {
     const g = Guardado.cargar(); if (!g) return false;
     const c = this.ctx;
+    if (c.red?.activa) { c.red.cerrar(); c.remotos?.limpiar(); }
+    this.modoSala = false;
     this.modo = g.modo; this.mapa = MAPAS[g.mapa] ? g.mapa : 'barrio';
     await c.cargarMapa(this.mapa);
     this.limpiarMundo();
@@ -183,7 +191,9 @@ export class Partida {
   }
 
   pausar() {
-    if (this.estado !== 'jugando') return;
+    const caido = this.modoSala && this.estado === 'caido';      // un caído también puede abrir el menú (y salir)
+    if (this.estado !== 'jugando' && !caido) return;
+    this.trasPausa = caido ? 'caido' : 'jugando';
     this.estado = 'pausa'; this.pausaT = performance.now();
     this.esperandoRaton = false; this.ctx.interfaz.mostrarEsperaRaton(false);
     this.ctx.entrada.liberar();
@@ -200,7 +210,8 @@ export class Partida {
 
   reanudar() {
     if (this.estado !== 'pausa') return;
-    this.estado = 'jugando'; this.sinRatonT = 0;
+    this.estado = this.trasPausa === 'caido' ? 'caido' : 'jugando'; this.sinRatonT = 0; this.trasPausa = null;
+    if (this.estado === 'caido') { this.ctx.interfaz.mostrarJuego(); return; }
     this.esperandoRaton = false; this.ctx.interfaz.mostrarEsperaRaton(false);
     this.ctx.interfaz.mostrarJuego();
     this.pedirRaton();
@@ -275,6 +286,11 @@ export class Partida {
     const cam = this.ctx.camara;
     (MAPAS[this.ctx.mapaActual] || MAPAS.barrio).camaraMenu(cam, this.menuT);
     if (cam.fov !== 70) { cam.fov = 70; cam.updateProjectionMatrix(); }
+  }
+
+  /** En sala, con la partida en marcha y alguien más conectado: solo entonces se envía estado (cuota del plan gratis). */
+  get emitiendoSala() {
+    return this.modoSala && this.ctx.red.jugadores.length > 1 && ['jugando', 'muriendo', 'pausa', 'caido'].includes(this.estado);
   }
 
   get jugando() { return this.estado === 'jugando' || this.estado === 'muriendo' || this.estado === 'caido'; }

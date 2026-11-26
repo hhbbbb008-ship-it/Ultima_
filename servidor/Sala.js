@@ -87,7 +87,7 @@ export class Sala extends DurableObject {
     ws.serializeAttachment(null);            // no contarlo dos veces (close + error)
     try { ws.close(1000, 'adios'); } catch {}
     const s = this.estado();
-    const { cerrar } = s.salir(yo.id);
+    const { cerrar } = s.salir(yo.id, !!yo.anfitrion);
     if (cerrar) {
       for (const w of this.abiertos()) {
         try { w.send(JSON.stringify({ t: T.FIN, motivo: 'anfitrion' })); w.serializeAttachment(null); w.close(4000, 'anfitrion'); } catch {}

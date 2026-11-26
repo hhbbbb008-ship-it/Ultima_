@@ -107,7 +107,9 @@ export class Red {
     const paso = 1 / RED_HZ;
     this.tickT = Math.max(0, this.tickT + paso);          // ritmo fijo aunque los FPS varíen
     for (const fn of this.antesDeTick) fn(paso);
-    const l = [...this.pendientes.values(), ...this.cola];
+    // primero los eventos (p. ej. una baja) y después el estado: así el receptor aplica la baja
+    // antes de una instantánea en la que ese zombi ya no aparece
+    const l = [...this.cola, ...this.pendientes.values()];
     this.pendientes.clear(); this.cola = [];
     if (!l.length) return;
     // si el paquete se pasa de tamaño, se parte (no debería pasar: ~60 zombis ≈ 3 KB)

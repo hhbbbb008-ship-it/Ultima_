@@ -28,6 +28,7 @@ export class Replicacion {
     const red = ctx.red, ev = ctx.eventos;
     // en cada tick de red: el anfitrión manda la instantánea; el cliente, el daño acumulado
     red.alTick(() => {
+      if (!ctx.partida.emitiendoSala) return;
       if (this.anfitrion) red.enviar(T.ZOMBIS, this.instantanea());
       else if (this.cliente) this.vaciarDanos();
     });
@@ -116,7 +117,12 @@ export class Replicacion {
       if (!(bits & 2) && z.cascoVida > 0) { z.cascoVida = 0; z.perderCasco(new THREE.Vector3(0, 1, 0)); }
     }
     // zombis que el anfitrión ya no tiene (y no están muriendo aquí): fuera
-    for (const z of [...Z.activos]) if (z.replica && z.vivo && !vistos.has(z.id) && ahora - (z.creadoT || 0) > 400) Z.reciclar(z);
+    for (const z of [...Z.activos]) {
+      if (!z.replica || !z.vivo) continue;
+      if (vistos.has(z.id)) { z.faltaT = 0; continue; }
+      if (!z.faltaT) z.faltaT = ahora;
+      if (ahora - z.faltaT > 300 && ahora - (z.creadoT || 0) > 400) Z.reciclar(z);   // margen por si la baja llega justo después
+    }
     // oleada
     if (Array.isArray(m.o)) {
       const ol = this.ctx.oleadas;

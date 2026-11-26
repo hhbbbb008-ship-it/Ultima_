@@ -113,9 +113,10 @@ export class MenuSala {
   accion(a) {
     const red = this.ctx.red;
     if (a === 'multi') this.abrir();
+    else if (a === 'volver' && this.ctx.interfaz.visible() === 'pantallaSala') this.ctx.interfaz.mostrarMenu();
     else if (a === 'salaCrear') this.entrar(codigoAleatorio());
     else if (a === 'salaUnir') this.entrar($('salaCodigoIn').value);
-    else if (a === 'salaEmpezar') { if (red.esAnfitrion) this.ctx.interfaz.abrirEquipo(); }
+    else if (a === 'salaEmpezar') { if (red.esAnfitrion) { this.ctx.interfaz.abrirEquipo(); this.ctx.interfaz.equipoSala = true; } }
     else if (a === 'salaSalir') { red.cerrar(); this.vista('inicio'); $('salaEstado').textContent = ''; }
     else return false;
     return true;

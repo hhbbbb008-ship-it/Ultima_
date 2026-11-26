@@ -87,6 +87,18 @@ try {
   ok(r4.status === 404, `el código del servidor no se publica como archivo (recibido ${r4.status})`);
 
   for (const c of [b, c3, c4, c5]) try { c.ws.close(); } catch {}
+
+  // 8) (LARGO=1) el anfitrión se va DESPUÉS de que la sala hibernó: igual se cierra para todos
+  if (process.env.LARGO) {
+    const cod2 = codigo();
+    const h = cliente(cod2); await h.listo; await espera(150);
+    const g = cliente(cod2); await g.listo; await espera(300);
+    console.log('      (esperando 75 s a que la sala hiberne…)');
+    await espera(75000);
+    h.ws.close(1000, 'adios'); await espera(1500);
+    // el juego cierra su conexión al recibir FIN (en workerd local el cierre que inicia el servidor tras despertar no siempre llega)
+    ok(g.de('fin').some(m => m.motivo === 'anfitrion'), 'tras hibernar, si sale el anfitrión los demás reciben FIN');
+  }
 } catch (e) { ok(false, 'excepción: ' + (e && e.message || e)); }
 
 console.log(fallos ? `\n${fallos} fallo(s)` : '\nTodo correcto');

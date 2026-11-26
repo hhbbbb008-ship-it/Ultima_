@@ -54,3 +54,8 @@ test('normalizarCodigo', () => {
   assert.equal(normalizarCodigo(null), null);
   assert.equal(MAX_BYTES, 16384);
 });
+
+test('si sale el anfitrión tras hibernar (estado reconstruido sin él), la sala se cierra', () => {
+  const s = SalaLogica.desde([2], null, 3);          // el socket del anfitrión ya no cuenta como abierto
+  assert.deepEqual(s.salir(1, true), { cerrar: true });
+});

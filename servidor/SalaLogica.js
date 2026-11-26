@@ -36,9 +36,10 @@ export class SalaLogica {
     return { ok: true, id, anfitrion: this.anfitrion === id };
   }
 
-  salir(id) {
+  /** eraAnfitrion: lo dice el adjunto del socket (tras hibernar, el estado reconstruido puede no saberlo). */
+  salir(id, eraAnfitrion = false) {
     this.ids = this.ids.filter(x => x !== id);
-    if (id === this.anfitrion) { this.anfitrion = null; return { cerrar: true }; }
+    if (id === this.anfitrion || eraAnfitrion) { this.anfitrion = null; return { cerrar: true }; }
     return { cerrar: false };
   }
 

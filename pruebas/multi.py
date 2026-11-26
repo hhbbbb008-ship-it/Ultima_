@@ -356,13 +356,105 @@ def uso():
         sin_errores([a, b])
 
 
+def revision():
+    """Hallazgos de la revisión final (cada uno falló antes de corregirse)."""
+    VIVOS = "() => window.__juego.zombis.activos.filter(z => z.vivo && z.estado !== 'emerger').map(z => z.id)"
+    with jugadores(2) as (a, b):
+        preparar([a, b])
+        iniciar_oleada(a)
+        a.wait_for_function("() => window.__juego.zombis.activos.filter(z => z.vivo && z.estado !== 'emerger').length >= 3", timeout=30_000)
+        b.wait_for_timeout(1200)
+        # C2: un zombi que mata el anfitrión muere (no desaparece) en el cliente
+        zid = [i for i in a.evaluate(VIVOS) if i in b.evaluate(VIVOS)][0]
+        a.evaluate("id => { const j = window.__juego, z = j.zombis.porId.get(id); z.recibirImpacto(99999, z.puntoTorso(), new j.jugador.pos.constructor(0, 0, 1), 'torso', 'pistola'); }", zid)
+        b.wait_for_function("id => { const z = window.__juego.zombis.porId.get(id); return z && z.estado === 'muerto'; }", arg=zid, timeout=5_000)
+        comprobar(True, 'un zombi que mata otro jugador cae muerto en el cliente (no desaparece)')
+        # C2: remate en equipo: el golpe final del cliente le da la baja al cliente
+        zid = [i for i in a.evaluate(VIVOS) if i in b.evaluate(VIVOS)][0]
+        bajas = b.evaluate("() => window.__juego.puntuacion.bajas")
+        a.evaluate("id => { const j = window.__juego, z = j.zombis.porId.get(id); z.recibirImpacto(z.vida * 0.5, z.puntoTorso(), new j.jugador.pos.constructor(0, 0, 1), 'torso', 'pistola'); }", zid)
+        b.wait_for_timeout(600)
+        b.evaluate("id => { const j = window.__juego, z = j.zombis.porId.get(id); z.recibirImpacto(z.vidaMax * 0.6 + 1, z.puntoTorso(), new j.jugador.pos.constructor(0, 0, 1), 'torso', 'pistola'); }", zid)
+        b.wait_for_function(f"() => window.__juego.puntuacion.bajas === {bajas + 1}", timeout=5_000)
+        comprobar(True, 'en un remate en equipo, quien da el golpe final se lleva la baja')
+        # M3: con la pestaña oculta, una tecla pulsada justo antes no se repite
+        b.evaluate("() => { const j = window.__juego; j.jugador.granadas = 3; }")
+        b.evaluate("""() => { const j = window.__juego; j._fn = j.motor.fn; j.motor.fn = () => {};
+            Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+            j.entrada.flancos.add(j.entrada.codigo('granada')); }""")
+        b.wait_for_timeout(1500)
+        g = b.evaluate("() => window.__juego.jugador.granadas")
+        b.evaluate("() => { const j = window.__juego; j.motor.fn = j._fn; delete document.hidden; }")
+        comprobar(g >= 2, f'con la pestaña oculta una pulsación no se repite sola (granadas: 3 → {g})')
+        # M7: un caído puede abrir la pausa y salir al menú
+        b.evaluate("() => { const j = window.__juego; j.partida.dios = false; j.jugador.recibirDano(9999, null); }")
+        b.wait_for_function("() => window.__juego.partida.estado === 'caido'", timeout=5_000)
+        b.evaluate("() => window.__juego.partida.pausar()")
+        comprobar(b.evaluate("() => document.getElementById('menuPausa').classList.contains('visible')"), 'un jugador caído puede abrir el menú de pausa')
+        b.evaluate("() => window.__juego.partida.reanudar()")
+        comprobar(b.evaluate("() => window.__juego.partida.estado") == 'caido', 'y al reanudar sigue caído (no revive)')
+        # I3: reiniciar del anfitrión reinicia a todos
+        b.evaluate("() => { window.__juego.puntuacion.total = 5000; }")
+        a.evaluate("() => window.__juego.interfaz.accion('reiniciar')")
+        b.wait_for_function("() => window.__juego.partida.estado === 'jugando' && window.__juego.puntuacion.total === 0 && window.__juego.jugador.vivo", timeout=20_000)
+        comprobar(True, 'si el anfitrión reinicia la partida, se reinicia para todos (también los caídos)')
+        # I4: en la pantalla final nadie sigue enviando
+        a.evaluate("() => window.__juego.partida.terminar(false)")
+        for p in (a, b):
+            p.wait_for_function("() => window.__juego.partida.estado === 'fin'", timeout=10_000)
+        e0 = [p.evaluate("() => window.__juego.red.enviados") for p in (a, b)]
+        a.wait_for_timeout(2000)
+        e1 = [p.evaluate("() => window.__juego.red.enviados") for p in (a, b)]
+        comprobar(e1 == e0, f'en la pantalla final no se envía nada (enviados {e0} → {e1})')
+        # M1: quien entra con el anfitrión en la pantalla final espera en la sala
+        cod = a.evaluate("() => window.__juego.red.codigo")
+        b.evaluate("() => window.__juego.partida.salirAlMenu()")
+        b.wait_for_timeout(500)
+        unir(b, cod, 'Beto')
+        b.wait_for_function("() => window.__juego.red.activa", timeout=15_000)
+        b.wait_for_timeout(1500)
+        comprobar(b.evaluate("() => window.__juego.partida.estado") == 'menu', 'quien entra mientras el anfitrión está en la pantalla final no arranca en un mundo muerto')
+        a.evaluate("() => window.__juego.interfaz.accion('otra')")
+        b.wait_for_function("() => window.__juego.partida.estado === 'jugando' && window.__juego.partida.modoSala", timeout=30_000)
+        comprobar(True, 'y entra cuando el anfitrión pulsa "Jugar de nuevo"')
+        sin_errores([a, b])
+    with jugadores(2) as (a, b):
+        abrir(a); abrir(b)
+        # I4: anfitrión solo en la partida → no gasta mensajes
+        crear(a, 'Ana')
+        a.click('[data-accion="salaEmpezar"]')
+        a.click('[data-accion="empezar"]')
+        a.wait_for_function("() => window.__juego.partida.estado === 'jugando' && window.__juego.partida.modoSala", timeout=60_000)
+        e0 = a.evaluate("() => window.__juego.red.enviados"); a.wait_for_timeout(2000); e1 = a.evaluate("() => window.__juego.red.enviados")
+        comprobar(e1 == e0, f'el anfitrión solo en la sala no envía nada ({e0} → {e1})')
+        a.evaluate("() => window.__juego.partida.salirAlMenu()")
+        # I1: Volver desde la sala lleva al menú aunque antes se abriera el equipo
+        cod = crear(a, 'Ana')
+        a.click('[data-accion="salaEmpezar"]')
+        a.evaluate("() => window.__juego.interfaz.accion('volver')")
+        comprobar(a.is_visible('#pantallaSala'), 'Volver desde el equipo regresa a la sala')
+        a.evaluate("() => window.__juego.interfaz.accion('volver')")
+        comprobar(a.is_visible('#menuPrincipal'), 'Volver desde la sala lleva al menú principal')
+        # I2: con una sala abierta, Jugar (un jugador) es una partida de un jugador y sale de la sala
+        unir(b, cod, 'Beto')
+        b.wait_for_function("() => window.__juego.red.activa", timeout=15_000)
+        b.evaluate("() => window.__juego.interfaz.accion('volver')")
+        b.evaluate("() => window.__juego.interfaz.accion('jugar')")
+        b.evaluate("() => window.__juego.interfaz.accion('empezar')")
+        b.wait_for_function("() => window.__juego.partida.estado === 'jugando'", timeout=60_000)
+        comprobar(b.evaluate("() => !window.__juego.partida.modoSala && !window.__juego.red.activa"), 'Jugar desde el menú inicia una partida de un jugador y sale de la sala')
+        a.wait_for_function("() => window.__juego.red.jugadores.length === 1", timeout=10_000)
+        comprobar(True, 'y el anfitrión ve que ese jugador se fue')
+        sin_errores([a, b])
+
+
 def todo():
     for f in FASES.values():
         if f is not todo:
             f()
 
 
-FASES = {'lobby': lobby, 'remotos': remotos, 'zombis': zombis, 'dano': dano, 'skins': skins, 'reglas': reglas, 'uso': uso, 'todo': todo}
+FASES = {'lobby': lobby, 'remotos': remotos, 'zombis': zombis, 'dano': dano, 'skins': skins, 'reglas': reglas, 'uso': uso, 'revision': revision, 'todo': todo}
 
 if __name__ == '__main__':
     ejecutar('multi ' + FASE, FASES[FASE])

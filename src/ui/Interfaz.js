@@ -121,8 +121,9 @@ export class Interfaz {
   accion(a) {
     const P = this.ctx.partida;
     if (this.ctx.menuSala?.accion(a)) return;
-    if (a === 'jugar') this.abrirEquipo();
-    else if (a === 'empezar' && this.ctx.red?.activa) { if (this.ctx.red.esAnfitrion) P.nuevaSala(this.modoSel, this.mapaSel, { ...this.equipo }); }
+    if (a === 'jugar') { this.abrirEquipo(); this.equipoSala = false; }
+    // el equipo abierto desde la sala empieza la partida de la sala; desde "Jugar", una de un jugador
+    else if (a === 'empezar' && this.equipoSala && this.ctx.red?.esAnfitrion) P.nuevaSala(this.modoSel, this.mapaSel, { ...this.equipo });
     else if (a === 'empezar') P.nueva(this.modoSel, this.mapaSel, { ...this.equipo });
     else if (a === 'continuar') P.continuar();
     else if (a === 'modos') this.abrir('pantallaModos');
