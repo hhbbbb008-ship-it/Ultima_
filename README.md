@@ -67,7 +67,7 @@ Para usar un servidor de salas en otra máquina (p. ej. tu laptop con un túnel)
 
 ### Publicar en Cloudflare desde GitHub
 1. Sube esta carpeta a un repositorio de GitHub (puede ser privado).
-2. En el panel de Cloudflare: **Workers & Pages** → tu Worker **square-river-fc0b** → **Settings** → **Builds** → **Connect** y elige el repositorio.
+2. En el panel de Cloudflare: **Workers & Pages** → tu Worker **ultima** → **Settings** → **Builds** → **Connect** y elige el repositorio.
 3. Comando de despliegue: `npx wrangler deploy` (sin comando de compilación). Guarda.
 4. Cada `git push` a la rama principal vuelve a publicar el juego y el servidor juntos.
 
@@ -351,7 +351,7 @@ sh pruebas/servidor_local.sh      # arranca `wrangler dev` desde una copia en /t
 node pruebas/red_sala.mjs         # servidor: anfitrión, reenvío, paquetes, sala llena, basura, cierre
 python3 pruebas/multi.py          # 2 navegadores: sala, remotos, zombis, daño, skins, reglas y consumo
 python3 pruebas/multi.py uso      # solo la medición de mensajes por segundo y horas de juego en el plan gratis
-node pruebas/red_sala.mjs wss://square-river-fc0b.hhbbbb008.workers.dev   # contra el servidor publicado
+node pruebas/red_sala.mjs wss://ultima.hhbbbb008.workers.dev   # contra el servidor publicado
 ```
 
 Si Chromium no está en `/opt/pw-browsers/chromium`, indica su ruta con la variable `CHROMIUM` (o instala el de Playwright con `python3 -m playwright install chromium`).

@@ -1,7 +1,7 @@
 {
   // Worker de Última Noche: sirve el juego (archivos estáticos) y las salas multijugador.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "square-river-fc0b",
+  "name": "ultima",
   "main": "servidor/index.js",
   "compatibility_date": "2026-11-01",
   "assets": { "directory": ".", "binding": "ASSETS" },
