@@ -33,8 +33,8 @@ export class Tienda {
     this.ctx = ctx;
     this.d = Guardado.tienda();
     this.partida = 0;                       // monedas ganadas en la partida actual
-    ctx.eventos.on('zombi:muerto', ({ tipo, parte }) => {
-      if (!ctx.partida?.jugando) return;
+    ctx.eventos.on('zombi:muerto', ({ tipo, parte, autor }) => {
+      if (!ctx.partida?.jugando || autor) return;
       if (tipo === 'coloso') this.jefeMuerto();
       this.ganar((MONEDAS_TIPO[tipo] || 1) + (parte === 'cabeza' ? 1 : 0));
     });

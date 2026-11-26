@@ -39,6 +39,7 @@ import { Guardado } from './juego/Guardado.js';
 import { Red } from './red/Red.js';
 import { MenuSala } from './ui/MenuSala.js';
 import { Remotos } from './red/Remotos.js';
+import { Replicacion } from './red/Replicacion.js';
 
 const $ = id => document.getElementById(id);
 const fotograma = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
@@ -125,6 +126,7 @@ async function arrancar() {
   ctx.red = new Red(ctx);
   ctx.partida = new Partida(ctx);
   ctx.remotos = new Remotos(ctx);
+  ctx.replicacion = new Replicacion(ctx);
   ctx.rendimiento = new Rendimiento(ctx);
   ctx.graficos = new Graficos(ctx);
   ctx.interfaz = new Interfaz(ctx);
@@ -148,6 +150,7 @@ async function arrancar() {
     ctx.partida.actualizar(dt);
     if (ctx.partida.modoSala) {
       ctx.remotos.actualizar(dt);
+      ctx.replicacion.actualizar(dt);
       if (ctx.partida.estado !== 'menu' && ctx.partida.estado !== 'fin') ctx.remotos.enviarEstado(dt);
     }
     if (ctx.red.activa) ctx.red.vaciar();

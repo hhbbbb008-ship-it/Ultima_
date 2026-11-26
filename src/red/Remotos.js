@@ -43,6 +43,10 @@ export class Remotos {
     if (r.bufer.length > 20) r.bufer.splice(0, r.bufer.length - 20);
     r.arma = typeof m.arma === 'string' ? m.arma : r.arma;
     r.vivo = m.vivo !== false;
+    // objetivo para la IA del anfitrión: último estado recibido (sin el retraso de interpolación)
+    const o = r.obj, dtv = ult ? Math.max(0.03, (e.t - ult.t) / 1000) : 1;
+    if (ult) o.vel.set((e.x - o.pos.x) / dtv, 0, (e.z - o.pos.z) / dtv).clampLength(0, 8);
+    o.pos.set(e.x, e.y, e.z); o.vivo = r.vivo;
   }
 
   crear(id) {
@@ -56,7 +60,15 @@ export class Remotos {
     etiqueta.position.y = 2.15;
     raiz.add(etiqueta);
     this.ctx.escena.add(raiz);
-    const r = { id, raiz, cuerpo, etiqueta, bufer: [], arma: null, vivo: true, nombre: this.nombre(id) };
+    const red = this.ctx.red;
+    // "jugador" remoto tal como lo ve la IA de zombis del anfitrión: el daño y los empujones se le envían
+    const obj = {
+      id, remoto: true, pos: new THREE.Vector3(), vel: new THREE.Vector3(), vivo: true,
+      recibirDano: (c, desde, tipo) => red.enviar(T.EVENTO, { e: 'dano', a: id, c: r2(c), x: r2(desde?.x || 0), z: r2(desde?.z || 0), tipo: tipo || null }),
+      empujar: (x, y, z) => red.enviar(T.EVENTO, { e: 'emp', a: id, x: r2(x), y: r2(y), z: r2(z) }),
+      sacudir: () => {},
+    };
+    const r = { id, raiz, cuerpo, etiqueta, bufer: [], arma: null, vivo: true, nombre: this.nombre(id), obj };
     this.lista.set(id, r);
     return r;
   }

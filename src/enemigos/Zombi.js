@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { T } from '../red/protocolo.js';
 import { TIPOS } from './TiposZombi.js';
 import { crearModeloZombi, aplicarLOD, mostrarHueso, sustituirMaterial } from './ModeloZombi.js';
 
@@ -75,6 +76,7 @@ export class Zombi {
   // ----------------------------------------------------------------- daño
   recibirImpacto(dano, punto, dir, parte, fuente) {
     if (!this.vivo) return { muerto: false };
+    if (this.replica) this.ctx.replicacion.registrarDano(this, dano, parte, fuente, dir);
     const d = this.def;
     let real = dano;
     if (this.armadura && parte === 'torso') {
@@ -106,8 +108,9 @@ export class Zombi {
   }
 
   /** Arranca de golpe la armadura del torso y el casco (katana). Devuelve si tenía algo que quitar. */
-  quitarArmadura(dir) {
+  quitarArmadura(dir, remoto = false) {
     if (!this.armadura && this.cascoVida <= 0) return false;
+    if (this.replica && !remoto) this.ctx.replicacion.registrarDano(this, 0, 'torso', '!arm', dir);
     this.armadura = 0;
     sustituirMaterial(this.modelo, 'armadura', 'ropaMarron');
     if (this.modelo.placas) mostrarHueso(this.modelo.placas, false);     // las placas salen volando
@@ -122,6 +125,7 @@ export class Zombi {
   /** Daño de fuego (molotov): sin sacudidas ni sonidos de impacto por cada llama. */
   quemar(dano) {
     if (!this.vivo) return false;
+    if (this.replica) this.ctx.replicacion.registrarDano(this, dano, 'torso', 'fuego', null);
     this.vida -= dano; this.alerta = true;
     this.ctx.eventos.emit('zombi:impacto', { zombi: this, parte: 'torso', dano });
     if (this.vida <= 0) { this.morir(new THREE.Vector3(0, 0, 1), 'torso', 'fuego'); return true; }
@@ -140,6 +144,7 @@ export class Zombi {
   morir(dir, parte, fuente) {
     const ctx = this.ctx, d = this.def;
     this.estado = 'muerto'; this.t = 0;
+    if (this.replica) this.previstoT = performance.now();    // muerte prevista hasta que el anfitrión la confirme
     this.h.cabeza.getWorldPosition(_v);
     const posCabeza = _v.clone();
     if (parte === 'cabeza' && ctx.ajustes.gen.gore && !d.jefe) {
@@ -158,10 +163,10 @@ export class Zombi {
       ctx.particulas.emitir('acido', this.puntoTorso(), null, 2.5);
       ctx.calcas.charcoAcido(this.pos, 1.6, 9, 4);
       ctx.audio.reproducir('acido_impacto', { pos: this.pos, vol: 0.9, ref: 4 });
-      const j = ctx.jugador;
-      if (Math.hypot(j.pos.x - this.pos.x, j.pos.z - this.pos.z) < 2.2) j.recibirDano(12, this.pos, 'acido');
+      if (!this.replica) for (const j of this.g.objetivos()) if (Math.hypot(j.pos.x - this.pos.x, j.pos.z - this.pos.z) < 2.2) j.recibirDano(12, this.pos, 'acido');
     }
-    ctx.eventos.emit('zombi:muerto', { zombi: this, tipo: this.tipo, parte, fuente, pos: this.pos.clone() });
+    // autor: null = lo mató este jugador; id = otro jugador de la sala; 'replica' = solo visual (cliente)
+    ctx.eventos.emit('zombi:muerto', { zombi: this, tipo: this.tipo, parte, fuente, pos: this.pos.clone(), dir: dir.clone(), autor: this.replica ? 'replica' : (this.autor ?? null) });
   }
 
   voz(clase, vol = 0.8) {
@@ -170,20 +175,21 @@ export class Zombi {
 
   // ------------------------------------------------------------- actualización
   actualizar(dt, info) {
-    const ctx = this.ctx, d = this.def, j = ctx.jugador;
+    const ctx = this.ctx, d = this.def, j = this.obj = this.g.objetivoPara(this);
     this.t += dt;
     this.cooldown -= dt;
     const dx = j.pos.x - this.pos.x, dz = j.pos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
-    this.dist = dist;
+    // distancia al jugador de ESTE equipo (LOD, sonido, sacudidas); en solitario es la misma
+    this.dist = j === ctx.jugador ? dist : this.distJugador();
 
-    if (this.estado === 'muerto') { this.actualizarMuerte(dt); this.animar(dt, info, dist); return; }
+    if (this.estado === 'muerto') { this.actualizarMuerte(dt); this.animar(dt, info, this.dist); return; }
     if (this.estado === 'emerger') {
       const k = Math.min(1, this.t / 1.4);
       this.raiz.position.set(this.pos.x, -1.9 * d.escala * (1 - ease(k)), this.pos.z);
       if (Math.random() < dt * 8) ctx.particulas.emitir('tierra', { x: this.pos.x, y: 0.05, z: this.pos.z }, null, 0.2, d.escala);
       if (k >= 1) { this.estado = 'perseguir'; this.t = 0; }
-      this.animar(dt, info, dist);
+      this.animar(dt, info, this.dist);
       return;
     }
 
@@ -208,11 +214,43 @@ export class Zombi {
       default: this.estadoPerseguir(dt, dist, dx, dz);
     }
     this.mover(dt);
-    this.animar(dt, info, dist);
+    this.animar(dt, info, this.dist);
+  }
+
+  /** Réplica cuya muerte prevista no confirmó el anfitrión: vuelve a estar en pie. */
+  revivir(vida) {
+    this.estado = 'perseguir'; this.t = 0; this.vida = vida; this.previstoT = 0;
+    this.raiz.rotation.x = 0; this.raiz.visible = true;
+    mostrarHueso(this.h.cabeza, true);
+  }
+
+  distJugador() { const j = this.ctx.jugador; return Math.hypot(j.pos.x - this.pos.x, j.pos.z - this.pos.z); }
+
+  /**
+   * Réplica (cliente de una sala): sin IA. Sigue el estado que manda el anfitrión
+   * (posición objetivo, orientación, estado de animación) y solo se anima.
+   */
+  actualizarReplica(dt, info) {
+    const d = this.def;
+    this.t += dt;
+    this.dist = this.distJugador();
+    if (this.estado === 'muerto') { this.actualizarMuerte(dt); this.animar(dt, info, this.dist); return; }
+    const k = 1 - Math.exp(-12 * dt);
+    this.pos.x += (this.objX - this.pos.x) * k + this.vel.x * dt * 0.5;
+    this.pos.z += (this.objZ - this.pos.z) * k + this.vel.z * dt * 0.5;
+    this.pos.y = this.ctx.colisiones.alturaSuelo(this.pos.x, this.pos.z, d.radio * 0.6, this.pos.y + 0.05);
+    let dy = this.objYaw - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    this.yaw += dy * Math.min(1, dt * 10);
+    if (this.estado === 'emerger') {
+      const e = Math.min(1, this.t / 1.4);
+      this.raiz.position.set(this.pos.x, -1.9 * d.escala * (1 - ease(e)), this.pos.z);
+    } else this.raiz.position.copy(this.pos);
+    this.raiz.rotation.y = this.yaw;
+    this.animar(dt, info, this.dist);
   }
 
   estadoPerseguir(dt, dist, dx, dz) {
-    const d = this.def, j = this.ctx.jugador, nav = this.ctx.zombis.nav;
+    const d = this.def, j = this.obj, nav = this.ctx.zombis.nav;
     let vel = this.alerta ? this.velAlertaV : this.velBase;
     let dirX, dirZ;
     // decisiones especiales
@@ -275,7 +313,7 @@ export class Zombi {
   }
 
   estadoAtacar(dt, dist) {
-    const d = this.def, j = this.ctx.jugador;
+    const d = this.def, j = this.obj;
     this.vel.multiplyScalar(Math.exp(-8 * dt));
     this.girarHacia(Math.atan2(j.pos.x - this.pos.x, j.pos.z - this.pos.z), dt, 6);
     if (!this.golpeado && this.t >= d.preparacion) {
@@ -298,7 +336,7 @@ export class Zombi {
   }
 
   estadoEscupir(dt) {
-    const j = this.ctx.jugador;
+    const j = this.obj;
     this.vel.multiplyScalar(Math.exp(-8 * dt));
     this.girarHacia(Math.atan2(j.pos.x - this.pos.x, j.pos.z - this.pos.z), dt, 6);
     if (!this.lanzado && this.t >= 0.5) {
@@ -306,13 +344,14 @@ export class Zombi {
       this.h.cabeza.getWorldPosition(_v); _v.y -= 0.05;
       const obj = new THREE.Vector3(j.pos.x + j.vel.x * 0.45, j.pos.y + 1.0, j.pos.z + j.vel.z * 0.45);
       this.ctx.proyectiles.lanzar(_v, obj, this.def.danoAcido * this.danoMult);
+      if (this.ctx.partida.modoSala) this.ctx.red.enviar(T.EVENTO, { e: 'proy', o: [_v.x, _v.y, _v.z].map(v => Math.round(v * 100) / 100), d: [obj.x, obj.y, obj.z].map(v => Math.round(v * 100) / 100) });
       this.ctx.audio.reproducir('escupir', { pos: _v, vol: 0.9, ref: 3 });
     }
     if (this.t >= 0.95) { this.estado = 'perseguir'; this.t = 0; this.escupirT = this.def.recargaEscupir * (0.8 + Math.random() * 0.5); }
   }
 
   estadoPreparaCarga(dt) {
-    const j = this.ctx.jugador;
+    const j = this.obj;
     this.vel.multiplyScalar(Math.exp(-6 * dt));
     this.girarHacia(Math.atan2(j.pos.x - this.pos.x, j.pos.z - this.pos.z), dt, 5);
     if (this.t >= 0.9) {
@@ -322,7 +361,7 @@ export class Zombi {
   }
 
   estadoCargando(dt, dist) {
-    const d = this.def, j = this.ctx.jugador;
+    const d = this.def, j = this.obj;
     this.vel.x = this.cargaDir.x * d.velCarga; this.vel.z = this.cargaDir.z * d.velCarga;
     if (Math.random() < dt * 10) this.ctx.particulas.emitir('polvo', { x: this.pos.x, y: 0.1, z: this.pos.z }, null, 0.6, 1.5);
     if (dist < 1.8 && j.vivo) {
@@ -345,7 +384,7 @@ export class Zombi {
       this.estado = 'aturdido'; this.t = 0; this.duracionAturdido = 1.8; this.cargaT = d.recargaCarga;
       this.ctx.audio.reproducir('golpe_suelo', { pos: this.pos, vol: 0.9, ref: 6 });
       this.ctx.particulas.emitir('escombro', { x: this.pos.x, y: 1, z: this.pos.z }, null, 1);
-      if (this.dist < 10) this.ctx.jugador.sacudir(0.4);
+      if (this.distJugador() < 10) this.ctx.jugador.sacudir(0.4);
     }
     this.pos.y = this.ctx.colisiones.alturaSuelo(this.pos.x, this.pos.z, d.radio * 0.6, this.pos.y + 0.05);
     this.raiz.position.copy(this.pos);
@@ -357,7 +396,7 @@ export class Zombi {
       this.faseSonido = this.fase;
       if (sp > 0.5 && Math.sign(antes) !== Math.sign(this.pasoPrevio || 0)) {
         this.ctx.audio.reproducir('paso_zombi', { pos: this.pos, vol: 1, tono: 0.55, ref: 5, reverb: 0.2 });
-        if (this.dist < 12) this.ctx.jugador.sacudir(0.08);
+        if (this.distJugador() < 12) this.ctx.jugador.sacudir(0.08);
       }
       this.pasoPrevio = antes;
     }
@@ -372,7 +411,7 @@ export class Zombi {
       this.golpeSuelo = true;
       this.ctx.audio.reproducir('golpe_suelo', { pos: this.pos, vol: 1, ref: 8 });
       this.ctx.particulas.emitir('escombro', { x: this.pos.x, y: 0.2, z: this.pos.z }, null, 1.5, 2);
-      if (this.dist < 15) this.ctx.jugador.sacudir(0.7);
+      if (this.distJugador() < 15) this.ctx.jugador.sacudir(0.7);
     }
     if (this.t > this.duracionCaida + this.vidaCadaver) {
       this.raiz.position.y -= dt * 0.35;                       // se hunde en el suelo antes de reciclarse

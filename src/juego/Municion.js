@@ -22,7 +22,7 @@ export class Municion {
     this.matHalo = new THREE.MeshBasicMaterial({ color: 0xffc23a, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
     this.geoHalo = new THREE.RingGeometry(0.3, 0.6, 24).rotateX(-Math.PI / 2);
     this.reiniciarContador();
-    ctx.eventos.on('zombi:muerto', d => this.alMorir(d));
+    ctx.eventos.on('zombi:muerto', d => { if (!d.autor) this.alMorir(d); });   // autor: baja de otro jugador o réplica
     ctx.eventos.on('oleada:fin', () => this.reabastecer());
   }
 

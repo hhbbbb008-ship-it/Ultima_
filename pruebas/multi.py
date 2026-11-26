@@ -156,13 +156,56 @@ def remotos():
         sin_errores([a, b])
 
 
+ESTADO_Z = """() => { const j = window.__juego; return {
+    vivos: j.zombis.contarVivos(), n: j.oleadas.n, est: j.oleadas.estado, rest: j.oleadas.restantes,
+    replicas: j.zombis.activos.filter(z => z.replica).length,
+    pos: Object.fromEntries(j.zombis.activos.filter(z => z.vivo).map(z => [z.id, [z.pos.x, z.pos.z]])) } }"""
+
+
+def iniciar_oleada(a):
+    a.evaluate("() => { const o = window.__juego.oleadas; if (o.estado === 'preparacion') o.cuenta = 0; }")
+
+
+def zombis():
+    with jugadores(2) as (a, b):
+        preparar([a, b])
+        iniciar_oleada(a)
+        a.wait_for_function("() => window.__juego.zombis.contarVivos() >= 4", timeout=30_000)
+        b.wait_for_timeout(1500)
+        ha, hb = a.evaluate(ESTADO_Z), b.evaluate(ESTADO_Z)
+        comprobar(ha['n'] == hb['n'] and hb['est'] == 'activa', f"misma oleada en ambos (anfitrión {ha['n']}/{ha['est']}, cliente {hb['n']}/{hb['est']})")
+        comprobar(abs(ha['vivos'] - hb['vivos']) <= 2 and hb['replicas'] >= 1, f"el cliente ve los mismos zombis (anfitrión {ha['vivos']}, cliente {hb['vivos']}, réplicas {hb['replicas']})")
+        comprobar(abs(ha['rest'] - hb['rest']) <= 2, f"mismos zombis restantes en el HUD ({ha['rest']} / {hb['rest']})")
+        comunes = [k for k in ha['pos'] if k in hb['pos']]
+        err = max(abs(ha['pos'][k][0] - hb['pos'][k][0]) + abs(ha['pos'][k][1] - hb['pos'][k][1]) for k in comunes) if comunes else 99
+        comprobar(comunes and err < 2.5, f'las réplicas están donde los zombis del anfitrión (error máx {err:.2f} m)')
+        comprobar(a.evaluate("() => window.__juego.zombis.activos.every(z => !z.replica)"), 'el anfitrión no tiene réplicas: simula él')
+        # objetivo: un zombi va a por el jugador vivo más cercano (aquí, el cliente)
+        zid = a.evaluate("""() => { const j = window.__juego, z = j.zombis.activos.find(z => z.vivo && z.estado !== 'emerger');
+            j.jugador.pos.set(z.pos.x + 25, j.jugador.pos.y, z.pos.z + 25); return [z.id, z.pos.x, z.pos.z]; }""")
+        b.evaluate("([x, z]) => { const j = window.__juego; j.partida.dios = false; j.jugador.salud = 100; j.jugador.pos.set(x + 1.2, j.jugador.pos.y, z); }", [zid[1], zid[2]])
+        a.wait_for_function("id => { const z = window.__juego.zombis.activos.find(z => z.id === id); return z && z.obj && z.obj.remoto; }", arg=zid[0], timeout=10_000)
+        comprobar(True, 'el zombi elige como objetivo al cliente, que está más cerca')
+        # el ataque de un zombi del anfitrión daña al cliente
+        for _ in range(40):
+            b.evaluate("([x, z]) => { const j = window.__juego.jugador; j.pos.set(x, j.pos.y, z); }",
+                       a.evaluate("id => { const z = window.__juego.zombis.activos.find(z => z.id === id) || window.__juego.zombis.activos.find(z => z.vivo); return [z.pos.x + 0.9, z.pos.z]; }", zid[0]))
+            b.wait_for_timeout(250)
+            if b.evaluate("() => window.__juego.jugador.salud") < 100:
+                break
+        salud = b.evaluate("() => window.__juego.jugador.salud")
+        comprobar(salud < 100, f'el zombi del anfitrión hiere al cliente (salud {salud:.0f})')
+        b.evaluate("() => { window.__juego.partida.dios = true; window.__juego.jugador.salud = 100; }")
+        sin_errores([a, b])
+
+
 def todo():
     for f in FASES.values():
         if f is not todo:
             f()
 
 
-FASES = {'lobby': lobby, 'remotos': remotos, 'todo': todo}
+FASES = {'lobby': lobby, 'remotos': remotos, 'zombis': zombis, 'todo': todo}
 
 if __name__ == '__main__':
     ejecutar('multi ' + FASE, FASES[FASE])

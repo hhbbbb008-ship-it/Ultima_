@@ -19,7 +19,7 @@ export class Botiquines {
     this.matHalo = new THREE.MeshBasicMaterial({ color: 0xff3a2a, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
     this.geoHalo = new THREE.RingGeometry(0.22, 0.42, 24).rotateX(-Math.PI / 2);
     ctx.eventos.on('oleada:inicio', () => this.alIniciarOleada());
-    ctx.eventos.on('zombi:muerto', d => this.alMorirZombi(d));
+    ctx.eventos.on('zombi:muerto', d => { if (!d.autor) this.alMorirZombi(d); });   // autor: baja de otro jugador o réplica
   }
 
   crear(pos, vida) {

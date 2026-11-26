@@ -10,8 +10,8 @@ export class Puntuacion {
   constructor(ctx) {
     this.ctx = ctx;
     this.reiniciar();
-    ctx.eventos.on('zombi:impacto', () => this.sumar(10, null));
-    ctx.eventos.on('zombi:muerto', d => this.alMorir(d));
+    ctx.eventos.on('zombi:impacto', d => { if (!d?.zombi?.autor) this.sumar(10, null); });   // impactos de otro jugador no puntúan aquí
+    ctx.eventos.on('zombi:muerto', d => { if (!d.autor) this.alMorir(d); });
   }
 
   reiniciar(g) {

@@ -46,8 +46,11 @@ export class Proyectiles {
       p.vida -= dt;
       p.estela += dt;
       if (p.estela > 0.02) { p.estela = 0; ctx.particulas.emitir('acidoEstela', m.position, null, 1); }
-      const djx = j.pos.x - m.position.x, djy = j.pos.y + 1.0 - m.position.y, djz = j.pos.z - m.position.z;
-      const tocaJugador = djx * djx + djy * djy * 0.4 + djz * djz < 0.5;
+      let tocaJugador = false;
+      for (const o of (p.dano > 0 ? ctx.zombis.objetivos() : [j])) {
+        const djx = o.pos.x - m.position.x, djy = o.pos.y + 1.0 - m.position.y, djz = o.pos.z - m.position.z;
+        if (djx * djx + djy * djy * 0.4 + djz * djz < 0.5) { tocaJugador = true; break; }
+      }
       if (h || tocaJugador || p.vida <= 0 || m.position.y < 0) {
         const pos = h ? new THREE.Vector3(h.x, h.y, h.z) : m.position.clone();
         this.impacto(pos, p.dano);
@@ -61,8 +64,11 @@ export class Proyectiles {
     const ctx = this.ctx, j = ctx.jugador;
     ctx.particulas.emitir('acido', pos, { x: 0, y: 1, z: 0 }, 1.5);
     ctx.audio.reproducir('acido_impacto', { pos, vol: 0.8, ref: 3 });
-    const d = Math.hypot(j.pos.x - pos.x, j.pos.z - pos.z, (j.pos.y + 1) - pos.y);
-    if (d < 1.8) j.recibirDano(dano * (1 - d / 2.4), pos, 'escupitajo');
+    // dano 0: proyectil solo visual (cliente de sala; el daño lo decide el anfitrión)
+    if (dano > 0) for (const o of ctx.zombis.objetivos()) {
+      const d = Math.hypot(o.pos.x - pos.x, o.pos.z - pos.z, (o.pos.y + 1) - pos.y);
+      if (d < 1.8) o.recibirDano(dano * (1 - d / 2.4), pos, 'escupitajo');
+    }
     const suelo = ctx.colisiones.alturaSuelo(pos.x, pos.z, 0.2, pos.y + 0.3);
     if (pos.y - suelo < 1.2) ctx.calcas.charcoAcido({ x: pos.x, z: pos.z }, 1.3, 11, 5);
   }

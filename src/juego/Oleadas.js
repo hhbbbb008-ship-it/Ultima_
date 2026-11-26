@@ -20,6 +20,7 @@ export class Oleadas {
 
   reiniciar(modo, oleadaInicial = 1) {
     this.modo = modo; this.cfg = MODOS[modo];
+    this.restRemoto = null;          // cliente de sala: lo dice el anfitrión
     this.n = oleadaInicial - 1;
     this.prepararSiguiente(oleadaInicial === 1 ? 6 : 8);
   }
@@ -35,7 +36,7 @@ export class Oleadas {
   /** Composición de la oleada n: lista de tipos a aparecer. */
   composicion(n) {
     const c = this.cfg;
-    let total = Math.min(150, Math.floor(6 + n * 2.6 + n * n * 0.18));
+    let total = Math.min(150, Math.floor((6 + n * 2.6 + n * n * 0.18) * this.factorSala));
     const jefes = n % 5 === 0 ? Math.max(1, Math.floor(n / 5)) : (n > 12 && Math.random() < 0.3 ? 1 : 0);
     if (n % 5 === 0) total = Math.floor(total * 0.7);
     const pCorr = n >= 3 ? Math.min(0.38, 0.08 + (n - 3) * 0.035) + (c.corredores || 0) : (c.corredores && n >= 2 ? c.corredores : 0);
@@ -67,16 +68,28 @@ export class Oleadas {
     this.ctx.partida.guardarPunto();
   }
 
-  get restantes() { return this.estado === 'activa' ? this.totalOleada - this.muertos : 0; }
+  get restantes() {
+    if (this.restRemoto != null) return this.estado === 'activa' ? this.restRemoto : 0;
+    return this.estado === 'activa' ? this.totalOleada - this.muertos : 0;
+  }
+
+  /** Cooperativo: +50 % de zombis por cada jugador extra en la sala. */
+  get factorSala() {
+    const c = this.ctx;
+    return c.partida?.modoSala ? 1 + 0.5 * Math.max(0, (c.red.jugadores.length || 1) - 1) : 1;
+  }
 
   /** Punto de aparición lejos del jugador y preferiblemente fuera de su vista. */
   puntoAparicion() {
     const ctx = this.ctx, j = ctx.jugador, puntos = ctx.mundo.aparicion;
     const f = ctx.camara.getWorldDirection(this._f || (this._f = new THREE.Vector3()));
+    const otros = ctx.zombis.objetivos();      // en sala: que no aparezcan encima de ningún jugador
     const cand = puntos.map(p => {
       const dx = p.x - j.pos.x, dz = p.z - j.pos.z, d = Math.hypot(dx, dz);
+      let dmin = d;
+      for (const o of otros) if (o !== j) dmin = Math.min(dmin, Math.hypot(p.x - o.pos.x, p.z - o.pos.z));
       const vista = (dx * f.x + dz * f.z) / (d || 1);
-      return { p, d, pun: (d < 16 ? -100 : 0) - vista * 20 - Math.abs(d - 30) * 0.3 + Math.random() * 12 };
+      return { p, d, pun: (dmin < 16 ? -100 : 0) - vista * 20 - Math.abs(d - 30) * 0.3 + Math.random() * 12 };
     }).sort((a, b) => b.pun - a.pun);
     const base = cand[0]?.p; if (!base) return null;
     return new THREE.Vector3(base.x + (Math.random() - 0.5) * 2.5, 0, base.z + (Math.random() - 0.5) * 2.5);
@@ -91,7 +104,7 @@ export class Oleadas {
     }
     if (this.estado !== 'activa') return;
     const vivos = ctx.zombis.contarVivos();
-    const cap = Math.min(ctx.rendimiento.capZombis, 6 + this.n * 2);
+    const cap = Math.min(ctx.partida.modoSala ? ctx.zombis.maxEnSala : Infinity, ctx.rendimiento.capZombis * (ctx.partida.modoSala ? 1.3 : 1), (6 + this.n * 2) * this.factorSala);
     // intensidad de la música según amenaza cercana y salud
     let cerca = 0;
     for (const z of ctx.zombis.activos) if (z.vivo && z.dist < 15) cerca++;

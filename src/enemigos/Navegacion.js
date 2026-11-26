@@ -37,14 +37,23 @@ export class Navegacion {
   }
 
   /** Recalcula el campo si el jugador cambió de celda (como mucho cada 0,25 s). */
+  /** pos: una posición o una lista (varios jugadores: distancia al más cercano). */
   actualizar(dt, pos) {
     this.temporizador -= dt;
-    let c = this.celda(pos.x, pos.z);
-    if (c < 0) return;
-    if (this.bloq[c]) c = this.libreCercana(c);
-    if (c === this.objetivoCelda || this.temporizador > 0) return;
-    this.objetivoCelda = c; this.temporizador = 0.25;
-    this.dijkstra(c);
+    const lista = Array.isArray(pos) ? pos : [pos];
+    const celdas = [];
+    for (const p of lista) {
+      let c = this.celda(p.x, p.z);
+      if (c < 0) continue;
+      if (this.bloq[c]) c = this.libreCercana(c);
+      if (!celdas.includes(c)) celdas.push(c);
+    }
+    if (!celdas.length) return;
+    celdas.sort((a, b) => a - b);
+    const clave = celdas.join(',');
+    if (clave === this.objetivoClave || this.temporizador > 0) return;
+    this.objetivoClave = clave; this.objetivoCelda = celdas[0]; this.temporizador = 0.25;
+    this.dijkstra(celdas);
   }
 
   libreCercana(c) {
@@ -66,7 +75,7 @@ export class Navegacion {
       while (true) { let h = 2 * k + 1; if (h >= tam) break; if (h + 1 < tam && P[h + 1] < P[h]) h++; if (P[h] >= up) break; H[k] = H[h]; P[k] = P[h]; k = h; }
       H[k] = ul; P[k] = up; return r;
     };
-    D[origen] = 0; push(origen, 0);
+    for (const o of (Array.isArray(origen) ? origen : [origen])) { D[o] = 0; push(o, 0); }
     while (tam > 0) {
       const p0 = P[0], i = pop();
       if (p0 > D[i]) continue;

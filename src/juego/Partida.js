@@ -209,7 +209,10 @@ export class Partida {
     c.granadas.actualizar(dt);
     c.municion.actualizar(dt);
     c.suministros.actualizar(dt);
-    if (this.estado === 'jugando') { c.oleadas.actualizar(dt); c.puntuacion.actualizar(dt); }
+    if (this.estado === 'jugando') {
+      if (!(this.modoSala && !c.red.esAnfitrion)) c.oleadas.actualizar(dt);     // en sala las lleva el anfitrión
+      c.puntuacion.actualizar(dt);
+    }
     if (this.estado === 'muriendo') {
       this.muerteT += dt;
       if (this.muerteT > 3) this.terminar(false);

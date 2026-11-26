@@ -26,7 +26,7 @@ export class Suministros {
     for (const [k, t] of Object.entries(TIPOS))
       this.matHalo[k] = new THREE.MeshBasicMaterial({ color: t.halo, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
     this.reiniciarContador();
-    ctx.eventos.on('zombi:muerto', d => this.alMorir(d));
+    ctx.eventos.on('zombi:muerto', d => { if (!d.autor) this.alMorir(d); });   // autor: baja de otro jugador o réplica
   }
 
   reiniciarContador() {

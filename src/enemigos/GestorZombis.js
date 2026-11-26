@@ -54,6 +54,9 @@ export class GestorZombis {
     this._m = new THREE.Matrix4();
     this.cuadro = 0;
     this.detalle = 2;
+    this.sigId = 0;
+    this.maxEnSala = 60;             // tope de zombis vivos a la vez en una sala (carga del anfitrión y de la red)
+    this.porId = new Map();          // id estable (lo asigna el anfitrión en sala) → zombi
     const self = this;
     this.info = {
       detalle: 2,
@@ -73,15 +76,49 @@ export class GestorZombis {
   /** Raíces de todos los zombis (incluidos los de reserva) para reconstruir materiales. */
   raices() { return this.todos.flatMap(z => [z.raiz, ...mallasDe(z.modelo)]); }
 
-  aparecer(tipo, pos, mods) {
+  aparecer(tipo, pos, mods, id = ++this.sigId) {
     let z = this.reserva[tipo].pop();
     if (!z) { z = new Zombi(this, tipo); this.todos.push(z); }
     z.activar(pos, mods);
+    z.id = id; z.replica = false; z.autor = null; z.obj = this.ctx.jugador;
+    this.porId.set(id, z);
     this.activos.push(z);
     return z;
   }
 
+  /** Cliente de sala: zombi controlado por el anfitrión (sin IA). */
+  crearReplica(id, tipo, pos) {
+    const z = this.aparecer(tipo, pos, { vida: 1, dano: 1, vel: 1 }, id);
+    z.replica = true; z.objX = pos.x; z.objZ = pos.z; z.objYaw = z.yaw;
+    return z;
+  }
+
+  /** Jugadores a los que pueden atacar los zombis de este equipo (en sala, el anfitrión incluye a los remotos). */
+  objetivos() {
+    const l = this._obj || (this._obj = []);
+    l.length = 0; l.push(this.ctx.jugador);
+    const P = this.ctx.partida;
+    if (P?.modoSala && this.ctx.red.esAnfitrion) for (const r of this.ctx.remotos.lista.values()) l.push(r.obj);
+    return l;
+  }
+
+  /** Jugador vivo más cercano (si no queda ninguno vivo, el local). */
+  objetivoPara(z) {
+    const l = this.objetivos();
+    if (l.length === 1) return l[0];
+    let mejor = null, md = Infinity;
+    for (const o of l) {
+      if (!o.vivo) continue;
+      const d = (o.pos.x - z.pos.x) ** 2 + (o.pos.z - z.pos.z) ** 2;
+      if (d < md) { md = d; mejor = o; }
+    }
+    return mejor || this.ctx.jugador;
+  }
+
+  get esReplica() { const P = this.ctx.partida; return !!(P?.modoSala && this.ctx.red.activa && !this.ctx.red.esAnfitrion); }
+
   reciclar(z) {
+    if (this.porId.get(z.id) === z) this.porId.delete(z.id);
     z.desactivar();
     const i = this.activos.indexOf(z);
     if (i >= 0) this.activos.splice(i, 1);
@@ -100,7 +137,14 @@ export class GestorZombis {
   actualizar(dt) {
     const ctx = this.ctx;
     this.cuadro++;
-    this.nav.actualizar(dt, ctx.jugador.pos);
+    const replica = this.esReplica;
+    if (!replica) {
+      // campo de flujo desde todos los jugadores vivos: cada zombi baja hacia el más cercano
+      const pos = this._pos || (this._pos = []);
+      pos.length = 0;
+      for (const o of this.objetivos()) if (o.vivo) pos.push(o.pos);
+      this.nav.actualizar(dt, pos.length ? pos : [ctx.jugador.pos]);
+    }
     // rejilla espacial
     this.hash.clear();
     for (const z of this.activos) {
@@ -113,7 +157,8 @@ export class GestorZombis {
     this.frustum.setFromProjectionMatrix(this._m);
     for (let i = this.activos.length - 1; i >= 0; i--) {
       const z = this.activos[i];
-      if (z) z.actualizar(dt, this.info);
+      if (!z) continue;
+      if (z.replica) z.actualizarReplica(dt, this.info); else z.actualizar(dt, this.info);
     }
   }
 
@@ -181,5 +226,5 @@ export class GestorZombis {
     for (const z of this.activos) if (z.vivo && !z.alerta && Math.hypot(z.pos.x - pos.x, z.pos.z - pos.z) < radio) z.alerta = true;
   }
 
-  limpiar() { for (const z of [...this.activos]) this.reciclar(z); }
+  limpiar() { for (const z of [...this.activos]) this.reciclar(z); this.porId.clear(); this.sigId = 0; }
 }
