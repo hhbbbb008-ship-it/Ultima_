@@ -73,9 +73,10 @@ export class Replicacion {
     const Z = this.ctx.zombis;
     for (const e of m.l.slice(0, MAX_DANOS)) {
       if (!Array.isArray(e)) continue;
-      const [zid, dano, parte, fuente, dx, dz] = e;
+      let [zid, dano, parte, fuente, dx, dz] = e;
       const z = Z.porId.get(zid);
-      if (!z || !z.vivo || !(dano >= 0) || dano > 5000) continue;
+      if (!z || !z.vivo || !(dano >= 0)) continue;
+      dano = Math.min(dano, 4000);           // límite de cordura (el mayor golpe del juego queda muy por debajo)
       const dir = _v.set(+dx || 0, 0, +dz || 1).normalize();
       z.autor = m.de;
       if (fuente === 'fuego') z.quemar(dano);

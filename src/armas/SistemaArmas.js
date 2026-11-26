@@ -400,6 +400,7 @@ export class SistemaArmas {
     ctx.particulas.emitir('humoCanon', _v.copy(origen).addScaledVector(_f, 0.7).addScaledVector(_r, 0.08).addScaledVector(_u, -0.06), _f, def.perdigones > 1 ? 1.6 : 1);
     if (def.tipo !== 'bomba' && def.recargaTipo !== 'basculante' && !def.proyectil) this.expulsarCasquillo(def.perdigones > 1);
     ctx.zombis.alertar(origen, 38);
+    ctx.eventos.emit('arma:disparo', { arma: def.id });
   }
 
   impactoMundo(h, dir) {

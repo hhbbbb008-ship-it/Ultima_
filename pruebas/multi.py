@@ -199,13 +199,42 @@ def zombis():
         sin_errores([a, b])
 
 
+def dano():
+    with jugadores(2) as (a, b):
+        preparar([a, b])
+        iniciar_oleada(a)
+        a.wait_for_function("() => window.__juego.zombis.activos.filter(z => z.vivo && z.estado !== 'emerger').length >= 2", timeout=30_000)
+        b.wait_for_function("() => window.__juego.zombis.activos.filter(z => z.replica && z.vivo && z.estado !== 'emerger').length >= 2", timeout=10_000)
+        GOLPE = """([cant, n]) => { const j = window.__juego, z = j.zombis.activos.filter(z => z.replica && z.vivo && z.estado !== 'emerger')[n];
+            const r = z.recibirImpacto(cant, z.puntoTorso(), new j.jugador.pos.constructor(0, 0, 1), 'torso', 'pistola'); return [z.id, z.vida, r.muerto]; }"""
+        zid, _, _ = b.evaluate(GOLPE, [30, 0])
+        antes = a.evaluate("id => window.__juego.zombis.porId.get(id).vida + 30", zid)
+        a.wait_for_function("([id, v]) => window.__juego.zombis.porId.get(id).vida <= v - 29", arg=[zid, antes], timeout=5_000)
+        comprobar(True, 'el disparo del cliente quita vida al zombi en el anfitrión')
+        pa, pb = a.evaluate("() => window.__juego.puntuacion.bajas"), b.evaluate("() => window.__juego.puntuacion.bajas")
+        ma = a.evaluate("() => window.__juego.oleadas.muertos")
+        zid2, _, muerto = b.evaluate(GOLPE, [99999, 1])
+        comprobar(muerto, 'la réplica muere al momento en el cliente (respuesta inmediata)')
+        a.wait_for_function("id => { const z = window.__juego.zombis.porId.get(id); return !z || !z.vivo; }", arg=zid2, timeout=5_000)
+        b.wait_for_function(f"() => window.__juego.puntuacion.bajas === {pb + 1}", timeout=5_000)
+        comprobar(True, 'el anfitrión confirma la baja y el cliente se la apunta')
+        comprobar(a.evaluate("() => window.__juego.puntuacion.bajas") == pa, 'el anfitrión no se apunta la baja del cliente')
+        comprobar(a.evaluate("() => window.__juego.oleadas.muertos") == ma + 1, 'la oleada cuenta la baja del cliente')
+        # disparos visibles/audibles para los demás (y alertan a los zombis del anfitrión)
+        vistos = a.evaluate("() => window.__juego.remotos.disparosVistos")
+        b.evaluate("() => { const j = window.__juego; for (let i = 0; i < 3; i++) { j.armas.actual.municion = 10; j.armas.disparar(); } }")
+        a.wait_for_function(f"() => window.__juego.remotos.disparosVistos >= {vistos + 3}", timeout=5_000)
+        comprobar(True, 'el anfitrión ve y oye los disparos del cliente')
+        sin_errores([a, b])
+
+
 def todo():
     for f in FASES.values():
         if f is not todo:
             f()
 
 
-FASES = {'lobby': lobby, 'remotos': remotos, 'zombis': zombis, 'todo': todo}
+FASES = {'lobby': lobby, 'remotos': remotos, 'zombis': zombis, 'dano': dano, 'todo': todo}
 
 if __name__ == '__main__':
     ejecutar('multi ' + FASE, FASES[FASE])

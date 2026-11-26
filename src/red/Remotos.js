@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { T } from './protocolo.js';
+import { ARMAS } from '../armas/DefArmas.js';
 
 /**
  * Jugadores remotos de la sala.
@@ -24,6 +25,9 @@ export class Remotos {
     this.ctx = ctx;
     this.lista = new Map();            // id → { raiz, cuerpo, etiqueta, bufer: [], arma, vivo }
     this.envioT = 0;
+    this.disparos = 0;                 // disparos propios desde el último estado enviado
+    this.disparosVistos = 0;           // disparos de otros reproducidos aquí
+    ctx.eventos.on('arma:disparo', () => { if (ctx.partida.modoSala) this.disparos++; });
     const red = ctx.red;
     red.alMensaje(T.JUGADOR, m => this.aplicar(m));
     red.alMensaje(T.SALIO, m => this.quitar(m.id));
@@ -43,6 +47,9 @@ export class Remotos {
     if (r.bufer.length > 20) r.bufer.splice(0, r.bufer.length - 20);
     r.arma = typeof m.arma === 'string' ? m.arma : r.arma;
     r.vivo = m.vivo !== false;
+    // disparos desde el último estado: se reproducen repartidos en el intervalo de envío
+    const ds = Math.min(20, Math.max(0, m.ds | 0));
+    if (ds) { r.pend += ds; r.pendInt = (1 / ENVIO_HZ) / ds; }
     // objetivo para la IA del anfitrión: último estado recibido (sin el retraso de interpolación)
     const o = r.obj, dtv = ult ? Math.max(0.03, (e.t - ult.t) / 1000) : 1;
     if (ult) o.vel.set((e.x - o.pos.x) / dtv, 0, (e.z - o.pos.z) / dtv).clampLength(0, 8);
@@ -68,7 +75,7 @@ export class Remotos {
       empujar: (x, y, z) => red.enviar(T.EVENTO, { e: 'emp', a: id, x: r2(x), y: r2(y), z: r2(z) }),
       sacudir: () => {},
     };
-    const r = { id, raiz, cuerpo, etiqueta, bufer: [], arma: null, vivo: true, nombre: this.nombre(id), obj };
+    const r = { id, raiz, cuerpo, etiqueta, bufer: [], arma: null, vivo: true, nombre: this.nombre(id), obj, pend: 0, pendInt: 0, pendT: 0 };
     this.lista.set(id, r);
     return r;
   }
@@ -113,9 +120,21 @@ export class Remotos {
       r.raiz.rotation.y = a.yaw + dy * k;
       r.cuerpo.rotation.x = r.vivo ? 0 : Math.PI / 2;              // caído: tumbado
       r.cuerpo.position.y = r.vivo ? 0.9 : 0.35;
+      if (r.pend > 0) { r.pendT -= dt; while (r.pend > 0 && r.pendT <= 0) { r.pend--; r.pendT += r.pendInt; this.disparoRemoto(r); } }
       // descartar estados ya pasados (deja uno anterior para interpolar)
       while (b.length > 2 && b[1].t <= ahora) b.shift();
     }
+  }
+
+  /** Sonido y fogonazo del disparo de otro jugador; en el anfitrión además alerta a los zombis. */
+  disparoRemoto(r) {
+    this.disparosVistos++;
+    const def = ARMAS[r.arma];
+    const p = r.raiz.position, yaw = r.raiz.rotation.y;
+    const boca = { x: p.x - Math.sin(yaw) * 0.5, y: p.y + 1.45, z: p.z - Math.cos(yaw) * 0.5 };
+    if (def?.sonido) this.ctx.audio.reproducir(def.sonido, { pos: boca, vol: 0.8, ref: 6, reverb: 0.45 });
+    this.ctx.particulas.emitir('humoCanon', boca, { x: -Math.sin(yaw), y: 0, z: -Math.cos(yaw) }, 0.8);
+    if (this.ctx.red.esAnfitrion) this.ctx.zombis.alertar(p, 38);
   }
 
   /** Envía el estado propio a ENVIO_HZ (se agrupa y sale en red.vaciar()). */
@@ -126,7 +145,8 @@ export class Remotos {
     const j = this.ctx.jugador;
     this.ctx.red.enviar(T.JUGADOR, {
       p: [r2(j.pos.x), r2(j.pos.y), r2(j.pos.z)], yaw: r2(j.yaw), pitch: r2(j.pitch),
-      arma: this.ctx.armas.actual?.def.id || null, vivo: j.vivo,
+      arma: this.ctx.armas.actual?.def.id || null, vivo: j.vivo, ds: this.disparos,
     });
+    this.disparos = 0;
   }
 }
