@@ -10,6 +10,7 @@ PIDF=/tmp/ultima-noche-dev.pid
 rm -rf "$COPIA" && mkdir -p "$COPIA"
 (cd "$RAIZ" && tar cf - --exclude=./.git --exclude=./.superpowers --exclude=./.wrangler --exclude=./node_modules --exclude=./pruebas/capturas .) | (cd "$COPIA" && tar xf -)
 ln -sfn "$RAIZ/node_modules" "$COPIA/node_modules"
+: > /tmp/wrangler-dev.log
 cd "$COPIA" && WRANGLER_SEND_METRICS=false nohup npx wrangler dev --port "$PUERTO" --ip 127.0.0.1 > /tmp/wrangler-dev.log 2>&1 &
 echo $! > "$PIDF"
 i=0; while [ $i -lt 60 ]; do
