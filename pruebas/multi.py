@@ -39,8 +39,13 @@ def abrir(p, extra=''):
     p.wait_for_function("() => document.getElementById('menuPrincipal').classList.contains('visible')", timeout=60_000)
 
 
+def ir_a_sala(p):
+    if not p.is_visible('#pantallaSala'):
+        p.click('[data-accion="multi"]')
+
+
 def crear(p, nombre='Ana'):
-    p.click('[data-accion="multi"]')
+    ir_a_sala(p)
     p.fill('#salaNombre', nombre)
     p.click('[data-accion="salaCrear"]')
     p.wait_for_function("() => /^[A-Z]{4}$/.test(document.getElementById('salaCodigo').textContent)", timeout=15_000)
@@ -48,7 +53,7 @@ def crear(p, nombre='Ana'):
 
 
 def unir(p, codigo, nombre='Beto'):
-    p.click('[data-accion="multi"]')
+    ir_a_sala(p)
     p.fill('#salaNombre', nombre)
     p.fill('#salaCodigoIn', codigo)
     p.click('[data-accion="salaUnir"]')
@@ -228,13 +233,54 @@ def dano():
         sin_errores([a, b])
 
 
+def skins():
+    with jugadores(2) as (a, b):
+        for p in (a, b):
+            abrir(p)
+        # cada uno elige su aspecto en la pantalla de sala (se guarda en el navegador)
+        a.click('[data-accion="multi"]')
+        b.click('[data-accion="multi"]')
+        comprobar(b.is_visible('#salaSkin'), 'la pantalla de sala muestra el selector de aspecto')
+        b.click('#salaSkin [data-skin="ropa"][data-valor="1"]')
+        b.click('#salaSkin [data-skin="gorra"][data-valor="2"]')
+        sk = b.evaluate("() => window.__juego.ajustes.skin")
+        comprobar(sk['ropa'] != a.evaluate("() => window.__juego.ajustes.skin.ropa") and sk['gorra'] is not None, f'el aspecto elegido queda en los ajustes ({sk})')
+        b.reload()
+        b.wait_for_function("() => window.__juego && window.__juego.ajustes", timeout=60_000)
+        comprobar(b.evaluate("() => window.__juego.ajustes.skin.ropa") == sk['ropa'], 'el aspecto se recuerda al recargar')
+        abrir(b)
+        cod = crear(a, 'Ana')
+        unir(b, cod, 'Beto')
+        b.wait_for_function("() => window.__juego.red.activa", timeout=15_000)
+        a.wait_for_function("() => window.__juego.red.jugadores.length === 2", timeout=15_000)
+        empezar_sala(a, [a, b])
+        a.wait_for_function("() => window.__juego.remotos.lista.size === 1", timeout=10_000)
+        a.wait_for_timeout(500)
+        vista = a.evaluate("() => { const r = [...window.__juego.remotos.lista.values()][0]; return { ropa: r.cuerpo.materiales.ropa.color.getHex(), gorra: !!r.cuerpo.gorra?.visible, partes: r.raiz.getObjectsByProperty('isMesh', true).length } }")
+        comprobar(vista['ropa'] == sk['ropa'], f"el anfitrión ve la ropa del cliente con su color ({vista['ropa']:#08x})")
+        comprobar(vista['gorra'] and vista['partes'] >= 8, f"el cuerpo tiene cabeza, torso, brazos, piernas y gorra ({vista['partes']} mallas)")
+        # un aspecto inválido en la red se sustituye por el de por defecto
+        b.evaluate("() => window.__juego.red.mandar({ t: 'jug', n: 'Beto', skin: { ropa: 'rojo', piel: -5, gorra: 123, mochila: 'si' } })")
+        a.wait_for_timeout(800)
+        inval = a.evaluate("() => { const r = [...window.__juego.remotos.lista.values()][0]; return { ropa: r.cuerpo.materiales.ropa.color.getHex(), piel: r.cuerpo.materiales.piel.color.getHex(), def: window.__juego.remotos.skinPorDefecto } }")
+        comprobar(inval['ropa'] == inval['def']['ropa'] and inval['piel'] == inval['def']['piel'], f'un aspecto inválido se reemplaza por el de por defecto ({inval})')
+        # se anima al caminar
+        a.evaluate("() => { const r = [...window.__juego.remotos.lista.values()][0]; r._p0 = r.cuerpo.piernaI.rotation.x; }")
+        for x in range(10):
+            b.evaluate(f"() => {{ const j = window.__juego.jugador; j.pos.set({x * 0.4}, j.pos.y, 2); }}")
+            b.wait_for_timeout(70)
+        movio = a.evaluate("() => { const r = [...window.__juego.remotos.lista.values()][0]; return Math.abs(r.cuerpo.piernaI.rotation.x - r._p0) + Math.abs(r.cuerpo.piernaD.rotation.x); }")
+        comprobar(movio > 0.05, f'las piernas se mueven cuando camina ({movio:.2f})')
+        sin_errores([a, b])
+
+
 def todo():
     for f in FASES.values():
         if f is not todo:
             f()
 
 
-FASES = {'lobby': lobby, 'remotos': remotos, 'zombis': zombis, 'dano': dano, 'todo': todo}
+FASES = {'lobby': lobby, 'remotos': remotos, 'zombis': zombis, 'dano': dano, 'skins': skins, 'todo': todo}
 
 if __name__ == '__main__':
     ejecutar('multi ' + FASE, FASES[FASE])

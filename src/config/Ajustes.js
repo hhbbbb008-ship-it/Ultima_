@@ -1,3 +1,4 @@
+import { sanearSkin } from '../jugador/CuerpoJugador.js';
 /**
  * Ajustes del juego: gráficos, generales, audio y controles.
  * Se guardan en localStorage y emiten eventos al cambiar.
@@ -116,6 +117,7 @@ export class Ajustes {
     this.g = { ...PERFILES.alto, vsync: 'si', limiteFps: '0', resDinamica: 'no' };
     this.gen = { ...GENERALES };
     this.controles = Object.fromEntries(ACCIONES.map(([a, , def]) => [a, def]));
+    this.skin = sanearSkin(null);     // aspecto del jugador en las salas multijugador
     this.cargar();
   }
 
@@ -181,9 +183,16 @@ export class Ajustes {
     this.eventos.emit('ajustes:controles');
   }
 
+  /** Cambia un campo del aspecto (validado contra la paleta) y lo guarda. */
+  cambiarSkin(campo, valor) {
+    this.skin = sanearSkin({ ...this.skin, [campo]: valor });
+    this.guardar();
+    this.eventos.emit('ajustes:skin', this.skin);
+  }
+
   guardar() {
     try {
-      localStorage.setItem(CLAVE_LS, JSON.stringify({ perfil: this.perfil, g: this.g, gen: this.gen, controles: this.controles }));
+      localStorage.setItem(CLAVE_LS, JSON.stringify({ perfil: this.perfil, g: this.g, gen: this.gen, controles: this.controles, skin: this.skin }));
     } catch (e) { /* almacenamiento no disponible */ }
   }
 
@@ -237,6 +246,7 @@ export class Ajustes {
       Object.assign(this.g, d.g || {});
       Object.assign(this.gen, d.gen || {});
       Object.assign(this.controles, d.controles || {});
+      this.skin = sanearSkin(d.skin);
       this.migrarControles(d.controles || {});
       this.sanearControles();
     } catch (e) { this.primeraVez = true; }

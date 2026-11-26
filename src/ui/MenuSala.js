@@ -1,4 +1,5 @@
 import { T, codigoAleatorio } from '../red/protocolo.js';
+import { PALETA } from '../jugador/CuerpoJugador.js';
 
 /**
  * Pantalla "Multijugador": crear o unirse a una sala con código de 4 letras,
@@ -18,12 +19,31 @@ export class MenuSala {
     let n = ''; try { n = localStorage.getItem(CLAVE_NOMBRE) || ''; } catch {}
     $('salaNombre').value = n;
     $('salaCodigoIn').addEventListener('keydown', e => { if (e.key === 'Enter') this.accion('salaUnir'); });
+    $('salaSkin').addEventListener('click', e => {
+      const b = e.target.closest('[data-skin]'); if (!b) return;
+      const campo = b.dataset.skin, i = +b.dataset.valor;
+      ctx.ajustes.cambiarSkin(campo, campo === 'mochila' ? i === 1 : PALETA[campo][i]);
+      this.construirSkin();
+      if (ctx.red.activa) this.presentarme();          // los demás ven el cambio al momento
+    });
+    this.construirSkin();
     const red = ctx.red;
     red.alMensaje(T.ENTRO, () => { this.presentarme(); this.refrescar(); });
     red.alMensaje(T.SALIO, () => this.refrescar());
     red.alMensaje(T.JUGADOR, m => { if (m.n) this.refrescar(); });
     red.alMensaje(T.FIN, m => { if (m.motivo === 'anfitrion') this.volverPorCierre('El anfitrión cerró la sala.'); });
     ctx.eventos.on('red:caida', () => this.volverPorCierre('Se perdió la conexión con la sala.'));
+  }
+
+  /** Muestras de color para ropa, piel y gorra, y la mochila. */
+  construirSkin() {
+    const sk = this.ctx.ajustes.skin, hex = c => '#' + c.toString(16).padStart(6, '0');
+    const fila = (titulo, campo, valores, pintar) => `<span>${titulo}</span><div class="muestras">${valores.map((v, i) => pintar(v, i, campo)).join('')}</div>`;
+    const color = (v, i, campo) => v === null
+      ? `<button class="texto${sk[campo] === null ? ' activa' : ''}" data-skin="${campo}" data-valor="${i}">Sin</button>`
+      : `<button class="${sk[campo] === v ? 'activa' : ''}" style="background:${hex(v)}" data-skin="${campo}" data-valor="${i}" aria-label="${campo} ${i + 1}"></button>`;
+    $('salaSkin').innerHTML = fila('Ropa', 'ropa', PALETA.ropa, color) + fila('Piel', 'piel', PALETA.piel, color) + fila('Gorra', 'gorra', PALETA.gorra, color)
+      + fila('Mochila', 'mochila', [true, false], (v, i) => `<button class="texto${sk.mochila === v ? ' activa' : ''}" data-skin="mochila" data-valor="${v ? 1 : 0}">${v ? 'Sí' : 'No'}</button>`);
   }
 
   get nombre() {

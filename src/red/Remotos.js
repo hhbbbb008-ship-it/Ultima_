@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { T } from './protocolo.js';
 import { ARMAS } from '../armas/DefArmas.js';
+import { crearCuerpoJugador, sanearSkin, SKIN_DEFECTO } from '../jugador/CuerpoJugador.js';
 
 /**
  * Jugadores remotos de la sala.
@@ -27,6 +28,7 @@ export class Remotos {
     this.envioT = 0;
     this.disparos = 0;                 // disparos propios desde el último estado enviado
     this.disparosVistos = 0;           // disparos de otros reproducidos aquí
+    this.skinPorDefecto = SKIN_DEFECTO;
     ctx.eventos.on('arma:disparo', () => { if (ctx.partida.modoSala) this.disparos++; });
     const red = ctx.red;
     red.alMensaje(T.JUGADOR, m => this.aplicar(m));
@@ -60,9 +62,9 @@ export class Remotos {
     const color = COLORES[(id - 1) % COLORES.length];
     const raiz = new THREE.Group();
     raiz.name = `remoto${id}`;
-    const cuerpo = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 1.1, 4, 10), new THREE.MeshLambertMaterial({ color }));
-    cuerpo.position.y = 0.9;
-    raiz.add(cuerpo);
+    const skin = this.skin(id);
+    const cuerpo = crearCuerpoJugador(skin);
+    raiz.add(cuerpo.raiz);
     const etiqueta = this.crearEtiqueta(this.nombre(id), color);
     etiqueta.position.y = 2.15;
     raiz.add(etiqueta);
@@ -75,12 +77,13 @@ export class Remotos {
       empujar: (x, y, z) => red.enviar(T.EVENTO, { e: 'emp', a: id, x: r2(x), y: r2(y), z: r2(z) }),
       sacudir: () => {},
     };
-    const r = { id, raiz, cuerpo, etiqueta, bufer: [], arma: null, vivo: true, nombre: this.nombre(id), obj, pend: 0, pendInt: 0, pendT: 0 };
+    const r = { id, raiz, cuerpo, etiqueta, bufer: [], arma: null, vivo: true, nombre: this.nombre(id), obj, pend: 0, pendInt: 0, pendT: 0, skinClave: JSON.stringify(skin), velVista: 0 };
     this.lista.set(id, r);
     return r;
   }
 
   nombre(id) { return this.ctx.red.perfiles.get(id)?.n || `Jugador ${id}`; }
+  skin(id) { return sanearSkin(this.ctx.red.perfiles.get(id)?.skin); }
 
   crearEtiqueta(texto, color) {
     const c = document.createElement('canvas'); c.width = 256; c.height = 64;
@@ -98,7 +101,8 @@ export class Remotos {
     const r = this.lista.get(id);
     if (!r) return;
     this.ctx.escena.remove(r.raiz);
-    r.raiz.traverse(o => { o.geometry?.dispose(); if (o.material) { o.material.map?.dispose(); o.material.dispose(); } });
+    r.cuerpo.liberar();
+    r.etiqueta.material.map.dispose(); r.etiqueta.material.dispose();
     this.lista.delete(id);
   }
 
@@ -112,14 +116,18 @@ export class Remotos {
       // nombre: puede llegar después del primer estado
       const n = this.nombre(r.id);
       if (n !== r.nombre) { r.nombre = n; r.raiz.remove(r.etiqueta); r.etiqueta.material.map.dispose(); r.etiqueta = this.crearEtiqueta(n, COLORES[(r.id - 1) % COLORES.length]); r.etiqueta.position.y = 2.15; r.raiz.add(r.etiqueta); }
+      // aspecto: puede llegar (o cambiar) después de crear el cuerpo
+      const sk = this.skin(r.id), clave = JSON.stringify(sk);
+      if (clave !== r.skinClave) { r.raiz.remove(r.cuerpo.raiz); r.cuerpo.liberar(); r.cuerpo = crearCuerpoJugador(sk); r.raiz.add(r.cuerpo.raiz); r.skinClave = clave; }
+      const px = r.raiz.position.x, pz = r.raiz.position.z;
       let a = b[0], c = b[0];
       for (let i = b.length - 1; i >= 0; i--) { if (b[i].t <= ahora) { a = b[i]; c = b[i + 1] || b[i]; break; } }
       const k = c === a ? 0 : Math.min(1, Math.max(0, (ahora - a.t) / (c.t - a.t)));
       r.raiz.position.set(a.x + (c.x - a.x) * k, a.y + (c.y - a.y) * k, a.z + (c.z - a.z) * k);
       let dy = c.yaw - a.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       r.raiz.rotation.y = a.yaw + dy * k;
-      r.cuerpo.rotation.x = r.vivo ? 0 : Math.PI / 2;              // caído: tumbado
-      r.cuerpo.position.y = r.vivo ? 0.9 : 0.35;
+      if (dt > 0) r.velVista += (Math.hypot(r.raiz.position.x - px, r.raiz.position.z - pz) / dt - r.velVista) * Math.min(1, dt * 8);
+      r.cuerpo.animar(dt, r.velVista, r.vivo);
       if (r.pend > 0) { r.pendT -= dt; while (r.pend > 0 && r.pendT <= 0) { r.pend--; r.pendT += r.pendInt; this.disparoRemoto(r); } }
       // descartar estados ya pasados (deja uno anterior para interpolar)
       while (b.length > 2 && b[1].t <= ahora) b.shift();

@@ -385,6 +385,11 @@ body.modoTactil #hudSalud .contador { display: none; }
 #esperaRaton small { display: block; margin-top: 8px; font-size: 13px; color: #bbb; letter-spacing: 1px; }
 
 /* ---------- multijugador ---------- */
+.skinSala { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; margin: 0 0 12px; font-size: .85em; }
+.skinSala .muestras { display: flex; gap: 6px; flex-wrap: wrap; }
+.skinSala button { width: 30px; height: 30px; min-height: 0; padding: 0; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); }
+.skinSala button.texto { width: auto; border-radius: 6px; padding: 0 10px; background: rgba(0,0,0,.45); color: #fff; }
+.skinSala button.activa { border-color: #ffe08a; box-shadow: 0 0 0 2px rgba(255,224,138,.35); }
 .campoSala { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 14px; font-size: .9em; opacity: .9; }
 .campoSala input, .unirSala input { background: rgba(0,0,0,.45); color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 6px; padding: 10px 12px; font: inherit; }
 .unirSala { display: flex; gap: 8px; margin-top: 12px; }
@@ -393,3 +398,5 @@ body.modoTactil #hudSalud .contador { display: none; }
 .listaSala { list-style: none; padding: 0; margin: 0 0 12px; }
 .listaSala li { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.1); }
 .pie.error { color: #ff8a7a; min-height: 1em; }
+#pantallaSala .panel { width: min(560px, 94vw); overflow-y: auto; gap: 10px; }
+#pantallaSala input { user-select: text; }
