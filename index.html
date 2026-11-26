@@ -119,6 +119,7 @@
       <nav class="menu">
         <button data-accion="jugar">Jugar</button>
         <button data-accion="continuar" id="bContinuar">Continuar</button>
+        <button data-accion="multi">Multijugador</button>
         <button data-accion="modos">Mapa y modo</button>
         <button data-accion="tienda" id="bTienda">Tienda</button>
         <button data-accion="ajustes:general">Configuración</button>
@@ -139,6 +140,28 @@
       <h3>Modo de juego</h3>
       <div id="listaModos" class="modos"></div>
       <div class="botones"><button data-accion="volver">Volver</button><button class="primario" data-accion="jugar">Jugar</button></div>
+    </div>
+  </div>
+
+  <!-- ===================== MULTIJUGADOR ===================== -->
+  <div id="pantallaSala" class="pantalla">
+    <div class="panel estrecho">
+      <h2>MULTIJUGADOR</h2>
+      <label class="campoSala">Tu nombre <input id="salaNombre" maxlength="16" autocomplete="off" placeholder="Superviviente"></label>
+      <div id="salaInicio">
+        <p class="info">Cooperativo hasta 4 jugadores. Crea una sala y comparte el código, o escribe el código de un amigo.</p>
+        <nav class="menu"><button class="primario" data-accion="salaCrear">Crear sala</button></nav>
+        <div class="unirSala"><input id="salaCodigoIn" maxlength="4" autocomplete="off" placeholder="CÓDIGO" aria-label="Código de sala"><button data-accion="salaUnir">Unirse</button></div>
+      </div>
+      <div id="salaLobby" hidden>
+        <p class="info">Código de la sala</p>
+        <div id="salaCodigo" class="codigoSala"></div>
+        <ul id="salaLista" class="listaSala"></ul>
+        <div class="botones"><button data-accion="salaSalir">Salir de la sala</button><button class="primario" id="bSalaEmpezar" data-accion="salaEmpezar">Elegir equipo y empezar</button></div>
+      </div>
+      <p id="salaEstado" class="pie"></p>
+      <p id="salaError" class="pie error" role="alert"></p>
+      <div class="botones"><button data-accion="volver">Volver</button></div>
     </div>
   </div>
 

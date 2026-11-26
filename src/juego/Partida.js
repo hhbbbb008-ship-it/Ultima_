@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Guardado } from './Guardado.js';
 import { MODOS } from './Oleadas.js';
 import { MAPAS } from '../mundo/mapas/index.js';
+import { T } from '../red/protocolo.js';
 
 /**
  * Orquestador de la partida: estados (menú, jugando, pausa, muriendo, fin),
@@ -28,6 +29,27 @@ export class Partida {
     ctx.eventos.on('entrada:errorBloqueo', () => { if (this.estado === 'jugando' && this.necesitaRaton) this.esperarRaton(); });
     ctx.eventos.on('entrada:bloqueado', () => { if (this.esperandoRaton) this.seguirConRaton(); });
     this.esperandoRaton = false; this.sinRatonT = 0;
+    this.modoSala = false;        // partida en una sala multijugador
+    this.enlazarRed();
+  }
+
+  // ------------------------------------------------------------ multijugador
+  enlazarRed() {
+    const red = this.ctx.red;
+    if (!red) return;
+    // el anfitrión anuncia la partida; quien llega tarde la recibe al entrar
+    red.alMensaje(T.EVENTO, m => {
+      if (m.e === 'inicio' && !red.esAnfitrion && !(this.modoSala && this.jugando && this.mapa === m.mapa)) this.nuevaSala(m.modo, m.mapa);
+    });
+    red.alMensaje(T.ENTRO, () => { if (red.esAnfitrion && this.modoSala) this.anunciarInicio(); });
+  }
+
+  anunciarInicio() { this.ctx.red.enviar(T.EVENTO, { e: 'inicio', modo: this.modo, mapa: this.mapa }); }
+
+  /** Partida en sala: el anfitrión la empieza y la anuncia; los clientes la siguen. */
+  async nuevaSala(modo, mapa, equipo = this.ctx.interfaz?.equipo) {
+    await this.nueva(modo, mapa, equipo ? { ...equipo } : this.equipo, true);
+    if (this.ctx.red.esAnfitrion) this.anunciarInicio();
   }
 
   /** En PC (sin pantalla táctil ni control en uso) se juega con el ratón capturado. */
@@ -63,8 +85,10 @@ export class Partida {
   }
 
   /** equipo: { secundaria, principal } de la pantalla de equipamiento (se recuerda para "jugar de nuevo"). */
-  async nueva(modo = this.modo, mapa = this.mapa, equipo = this.equipo) {
+  async nueva(modo = this.modo, mapa = this.mapa, equipo = this.equipo, sala = false) {
     const c = this.ctx;
+    if (this.modoSala && !sala) this.ctx.red?.cerrar();
+    this.modoSala = sala;
     this.modo = modo; this.mapa = MAPAS[mapa] ? mapa : 'barrio'; this.equipo = equipo;
     await c.cargarMapa(this.mapa);
     this.limpiarMundo();
@@ -108,6 +132,7 @@ export class Partida {
   }
 
   guardarPunto() {
+    if (this.modoSala) return;      // en sala no hay "Continuar"
     const c = this.ctx;
     Guardado.guardar({ modo: this.modo, mapa: this.mapa, oleada: c.oleadas.n, puntuacion: c.puntuacion.guardable(), armas: c.armas.estadoGuardable(), botiquines: c.jugador.botiquines, granadas: c.jugador.granadas, chalecos: c.jugador.chalecos, bebidas: c.jugador.bebidas, molotovs: c.jugador.molotovs, chaleco: Math.round(c.jugador.chaleco) });
   }
@@ -137,6 +162,7 @@ export class Partida {
   }
 
   salirAlMenu() {
+    if (this.modoSala) { this.modoSala = false; this.ctx.red?.cerrar(); }
     this.estado = 'menu';
     this.esperandoRaton = false; this.ctx.interfaz.mostrarEsperaRaton(false);
     this.limpiarMundo();

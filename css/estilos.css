@@ -383,3 +383,13 @@ body.modoTactil #hudSalud .contador { display: none; }
 #esperaRaton > div { text-align: center; font-family: var(--fuente); color: #fff; padding: 22px 34px; border: 1px solid rgba(255,255,255,.25); background: rgba(10,10,12,.7); }
 #esperaRaton b { display: block; font-size: 26px; letter-spacing: 3px; }
 #esperaRaton small { display: block; margin-top: 8px; font-size: 13px; color: #bbb; letter-spacing: 1px; }
+
+/* ---------- multijugador ---------- */
+.campoSala { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 14px; font-size: .9em; opacity: .9; }
+.campoSala input, .unirSala input { background: rgba(0,0,0,.45); color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 6px; padding: 10px 12px; font: inherit; }
+.unirSala { display: flex; gap: 8px; margin-top: 12px; }
+.unirSala input { flex: 1; text-transform: uppercase; letter-spacing: 6px; text-align: center; font-size: 1.2em; min-width: 0; }
+.codigoSala { font-size: 2.6em; letter-spacing: 12px; text-align: center; font-weight: 800; color: #ffe08a; margin: 4px 0 12px; user-select: all; }
+.listaSala { list-style: none; padding: 0; margin: 0 0 12px; }
+.listaSala li { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.1); }
+.pie.error { color: #ff8a7a; min-height: 1em; }

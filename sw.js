@@ -1,5 +1,5 @@
 // Service worker: guarda el juego para que funcione sin internet.
-const CACHE = 'ultima-noche-v7';
+const CACHE = 'ultima-noche-v8';
 
 self.addEventListener('install', (evento) => {
   evento.waitUntil(

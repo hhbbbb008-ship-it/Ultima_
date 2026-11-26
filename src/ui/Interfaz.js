@@ -14,7 +14,7 @@ import { PRECIOS_ARMAS, PRECIO_BOTIQUIN, PRECIO_GRANADA, LOTE_GRANADAS, MAX_RESE
  * así que cada control está conectado a un parámetro real.
  */
 const $ = id => document.getElementById(id);
-const PANTALLAS = ['carga', 'menuPrincipal', 'pantallaModos', 'pantallaEquipo', 'pantallaTienda', 'pantallaAjustes', 'pantallaCreditos', 'menuPausa', 'pantallaFin'];
+const PANTALLAS = ['carga', 'menuPrincipal', 'pantallaModos', 'pantallaEquipo', 'pantallaTienda', 'pantallaAjustes', 'pantallaCreditos', 'menuPausa', 'pantallaFin', 'pantallaSala'];
 
 export class Interfaz {
   constructor(ctx) {
@@ -45,7 +45,7 @@ export class Interfaz {
       if (P.esperandoRaton) { P.pausaDesdeEspera(); return; }
       // Esc en el menú de pausa vuelve al juego (con un margen: el mismo Esc que soltó el ratón no cuenta)
       if (vis === 'menuPausa' && P.estado === 'pausa' && performance.now() - (P.pausaT || 0) > 500) { P.reanudar(); return; }
-      if (['pantallaAjustes', 'pantallaModos', 'pantallaCreditos', 'pantallaEquipo', 'pantallaTienda'].includes(vis)) this.accion('volver');
+      if (['pantallaAjustes', 'pantallaModos', 'pantallaCreditos', 'pantallaEquipo', 'pantallaTienda', 'pantallaSala'].includes(vis)) this.accion('volver');
     });
 
     ctx.eventos.on('arma:impacto', d => this.marcaImpacto(d));
@@ -115,9 +115,14 @@ export class Interfaz {
   mostrarPausa() { this.mostrar('menuPausa'); $('hud').classList.remove('oculto'); }
   abrir(id) { this.origen = this.visible() || 'menuPrincipal'; this.mostrar(id); }
 
+  /** Nombre del mapa y modo elegidos (para el lobby multijugador). */
+  nombreSeleccion() { return `${MAPAS[this.mapaSel].nombre} · ${MODOS[this.modoSel].nombre}`; }
+
   accion(a) {
     const P = this.ctx.partida;
+    if (this.ctx.menuSala?.accion(a)) return;
     if (a === 'jugar') this.abrirEquipo();
+    else if (a === 'empezar' && this.ctx.red?.activa) { if (this.ctx.red.esAnfitrion) P.nuevaSala(this.modoSel, this.mapaSel, { ...this.equipo }); }
     else if (a === 'empezar') P.nueva(this.modoSel, this.mapaSel, { ...this.equipo });
     else if (a === 'continuar') P.continuar();
     else if (a === 'modos') this.abrir('pantallaModos');
@@ -131,6 +136,9 @@ export class Interfaz {
     else if (a === 'volver') { this.mostrar(this.origen); if (this.origen === 'menuPrincipal') this.mostrarMenu(); }
     else if (a === 'reanudar') P.reanudar();
     else if (a === 'editarHud') this.ctx.editorHud.abrir(this.visible());
+    else if ((a === 'reiniciar' || a === 'otra') && P.modoSala) {
+      if (this.ctx.red.esAnfitrion) P.nuevaSala(P.modo, P.mapa, P.equipo); else this.notificar('Solo el anfitrión puede reiniciar la partida');
+    }
     else if (a === 'reiniciar') P.nueva(P.modo, P.mapa, P.equipo);
     else if (a === 'salir') P.salirAlMenu();
     else if (a === 'otra') P.nueva(P.modo, P.mapa, P.equipo);

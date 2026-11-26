@@ -36,6 +36,8 @@ import { EditorHud } from './ui/EditorHud.js';
 import { Navegacion } from './enemigos/Navegacion.js';
 import { MAPAS } from './mundo/mapas/index.js';
 import { Guardado } from './juego/Guardado.js';
+import { Red } from './red/Red.js';
+import { MenuSala } from './ui/MenuSala.js';
 
 const $ = id => document.getElementById(id);
 const fotograma = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
@@ -119,10 +121,12 @@ async function arrancar() {
   ctx.municion = new Municion(ctx);
   ctx.suministros = new Suministros(ctx);
   ctx.tienda = new Tienda(ctx);
+  ctx.red = new Red(ctx);
   ctx.partida = new Partida(ctx);
   ctx.rendimiento = new Rendimiento(ctx);
   ctx.graficos = new Graficos(ctx);
   ctx.interfaz = new Interfaz(ctx);
+  ctx.menuSala = new MenuSala(ctx);
   ctx.cargarMapa = id => cargarMapa(ctx, id);
   ctx.editorHud = new EditorHud(ctx);
   ctx.mando = new Mando(ctx);
@@ -140,6 +144,7 @@ async function arrancar() {
     t += dt;
     ctx.mando.actualizar(dt);
     ctx.partida.actualizar(dt);
+    if (ctx.red.activa) ctx.red.vaciar();
     ctx.mundo.actualizar(dt, ctx.camara, DISTANCIAS[ctx.ajustes.g.distancia]);
     ctx.iluminacion.actualizar(dt, ctx.camara, t);
     ctx.particulas.setEscala(ctx.renderer.domElement.height, ctx.camara.fov);
