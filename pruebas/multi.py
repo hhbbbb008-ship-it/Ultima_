@@ -274,13 +274,95 @@ def skins():
         sin_errores([a, b])
 
 
+def reglas():
+    with jugadores(2) as (a, b):
+        preparar([a, b])
+        iniciar_oleada(a)
+        a.wait_for_function("() => window.__juego.zombis.activos.filter(z => z.vivo && z.estado !== 'emerger').length >= 2", timeout=30_000)
+        # la pausa del anfitrión no congela la partida de los demás
+        a.evaluate("() => window.__juego.partida.pausar()")
+        p0 = a.evaluate("() => window.__juego.zombis.activos.filter(z => z.vivo).map(z => [z.pos.x, z.pos.z])")
+        a.wait_for_timeout(1500)
+        p1 = a.evaluate("() => window.__juego.zombis.activos.filter(z => z.vivo).map(z => [z.pos.x, z.pos.z])")
+        mov = sum(abs(x0 - x1) + abs(z0 - z1) for (x0, z0), (x1, z1) in zip(p0, p1))
+        comprobar(mov > 0.5, f'con el anfitrión en pausa los zombis siguen moviéndose ({mov:.1f} m)')
+        a.evaluate("() => window.__juego.partida.reanudar()")
+        # pestaña del anfitrión en segundo plano (sin requestAnimationFrame): la partida sigue
+        a.evaluate("""() => { const j = window.__juego; j._fn = j.motor.fn; j.motor.fn = () => {};
+            Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); }""")
+        z0 = b.evaluate(ESTADO_Z)['pos']
+        b.wait_for_timeout(1500)
+        z1 = b.evaluate(ESTADO_Z)['pos']
+        comunes = [k for k in z0 if k in z1]
+        mov = sum(abs(z0[k][0] - z1[k][0]) + abs(z0[k][1] - z1[k][1]) for k in comunes)
+        comprobar(mov > 0.5, f'con la pestaña del anfitrión oculta, el cliente sigue viendo moverse a los zombis ({mov:.1f} m)')
+        a.evaluate("""() => { const j = window.__juego; j.motor.fn = j._fn; delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); }""")
+        # caída y reaparición al terminar la oleada
+        b.evaluate("() => { const j = window.__juego; j.partida.dios = false; j.jugador.recibirDano(9999, null); }")
+        b.wait_for_function("() => window.__juego.partida.estado === 'caido'", timeout=5_000)
+        comprobar(True, 'en sala, al morir quedas caído (espectador), no termina la partida')
+        a.wait_for_function("() => { const r = [...window.__juego.remotos.lista.values()][0]; return r && !r.vivo && !r.obj.vivo; }", timeout=5_000)
+        comprobar(True, 'el anfitrión ve al cliente caído y sus zombis dejan de perseguirlo')
+        a.evaluate("""() => { const j = window.__juego; j.oleadas.cola = [];
+            for (const z of [...j.zombis.activos]) if (z.vivo) z.recibirImpacto(99999, z.puntoTorso(), new j.jugador.pos.constructor(0, 0, 1), 'torso', 'pistola');
+            j.oleadas.muertos = j.oleadas.totalOleada; }""")
+        b.wait_for_function("() => window.__juego.partida.estado === 'jugando' && window.__juego.jugador.vivo", timeout=15_000)
+        comprobar(b.evaluate("() => window.__juego.jugador.salud") == 100, 'al terminar la oleada el caído reaparece con la salud completa')
+        # todos caídos → derrota para todos (sin tocar la partida guardada de un jugador ni sus récords)
+        GUARDA = "async () => (await import('./src/juego/Guardado.js')).Guardado"
+        for p in (a, b):
+            p.evaluate(f"async () => {{ const G = await ({GUARDA})(); G.guardar({{ modo: 'clasico', mapa: 'barrio', oleada: 4, puntuacion: {{}}, armas: {{}} }}); }}")
+        recs = [p.evaluate(f"async () => JSON.stringify((await ({GUARDA})()).records())") for p in (a, b)]
+        for p in (a, b):
+            p.evaluate("() => { const j = window.__juego; j.partida.dios = false; j.jugador.recibirDano(9999, null); }")
+        for p in (a, b):
+            p.wait_for_function("() => window.__juego.partida.estado === 'fin' && document.getElementById('pantallaFin').classList.contains('visible')", timeout=10_000)
+        comprobar(True, 'si caen todos, la partida termina para todos')
+        for i, p in enumerate((a, b)):
+            g = p.evaluate(f"async () => (await ({GUARDA})()).cargar()")
+            comprobar(g and g['oleada'] == 4, 'terminar en sala no borra tu partida guardada de un jugador')
+            comprobar(p.evaluate(f"async () => JSON.stringify((await ({GUARDA})()).records())") == recs[i], 'ni cambia tus récords de un jugador')
+        sin_errores([a, b])
+    # el anfitrión se va: el cliente vuelve al menú con aviso
+    with jugadores(2) as (a, b):
+        preparar([a, b])
+        a.evaluate("() => window.__juego.partida.salirAlMenu()")
+        b.wait_for_function("() => !window.__juego.partida.modoSala && window.__juego.partida.estado === 'menu'", timeout=10_000)
+        txt = b.eval_on_selector('#salaError', 'e => e.textContent')
+        comprobar('anfitri' in txt.lower(), f'si el anfitrión se va, el cliente vuelve al menú con aviso ("{txt}")')
+        sin_errores([a, b])
+
+
+def uso():
+    """Mensajes por segundo de cada jugador durante una oleada → solicitudes facturables por hora."""
+    with jugadores(2) as (a, b):
+        preparar([a, b])
+        iniciar_oleada(a)
+        a.wait_for_function("() => window.__juego.zombis.contarVivos() >= 4", timeout=30_000)
+        # simulación a 60 Hz sin dibujar (como un equipo real), independiente de los FPS del navegador de pruebas
+        for p in (a, b):
+            p.evaluate("() => { const j = window.__juego; j._fn = j.motor.fn; j.motor.fn = () => {}; j._i = setInterval(() => j.paso(1 / 60, false), 1000 / 60); }")
+        b.evaluate("() => { const j = window.__juego; j.armas.actual.municion = 999; j._t = setInterval(() => { j.armas.disparar(); const z = j.zombis.activos.find(z => z.replica && z.vivo); if (z) z.recibirImpacto(1, z.puntoTorso(), new j.jugador.pos.constructor(0,0,1), 'torso', 'pistola'); }, 90); }")
+        e0 = [p.evaluate("() => window.__juego.red.enviados") for p in (a, b)]
+        a.wait_for_timeout(10_000)
+        e1 = [p.evaluate("() => window.__juego.red.enviados") for p in (a, b)]
+        tasas = [(e1[i] - e0[i]) / 10 for i in range(2)]
+        comprobar(min(tasas) > 3, f'hay tráfico real durante la medición ({tasas})')
+        hora = [t / 20 * 3600 for t in tasas]
+        print(f'    anfitrión {tasas[0]:.1f} msg/s ({hora[0]:.0f}/h) · cliente {tasas[1]:.1f} msg/s ({hora[1]:.0f}/h)')
+        peor4 = hora[0] + 3 * hora[1]
+        comprobar(max(hora) <= 3000, f'cada jugador gasta ≤ 3000 solicitudes facturables por hora (máx {max(hora):.0f})')
+        comprobar(peor4 <= 12000, f'una sala de 4 gasta ≤ 12000/h → ≥ 8 h de juego al día en el plan gratis ({peor4:.0f}/h ≈ {100000 / peor4:.1f} h/día)')
+        sin_errores([a, b])
+
+
 def todo():
     for f in FASES.values():
         if f is not todo:
             f()
 
 
-FASES = {'lobby': lobby, 'remotos': remotos, 'zombis': zombis, 'dano': dano, 'skins': skins, 'todo': todo}
+FASES = {'lobby': lobby, 'remotos': remotos, 'zombis': zombis, 'dano': dano, 'skins': skins, 'reglas': reglas, 'uso': uso, 'todo': todo}
 
 if __name__ == '__main__':
     ejecutar('multi ' + FASE, FASES[FASE])

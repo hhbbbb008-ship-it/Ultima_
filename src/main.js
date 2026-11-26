@@ -142,18 +142,15 @@ async function arrancar() {
   progreso('Compilando shaders…', 0.88); await fotograma();
   try { await ctx.renderer.compileAsync(ctx.escena, ctx.camara); } catch (e) { ctx.renderer.compile(ctx.escena, ctx.camara); }
 
-  // bucle principal
+  // bucle principal: paso(dt, dibujar). Separado del render para poder simular sin dibujar.
   let t = 0;
-  ctx.motor.iniciar(dt => {
+  ctx.paso = (dt, dibujar = true) => {
     t += dt;
-    ctx.mando.actualizar(dt);
+    if (dibujar) ctx.mando.actualizar(dt);
     ctx.partida.actualizar(dt);
-    if (ctx.partida.modoSala) {
-      ctx.remotos.actualizar(dt);
-      ctx.replicacion.actualizar(dt);
-      if (ctx.partida.estado !== 'menu' && ctx.partida.estado !== 'fin') ctx.remotos.enviarEstado(dt);
-    }
-    if (ctx.red.activa) ctx.red.vaciar();
+    if (ctx.partida.modoSala) ctx.remotos.actualizar(dt);
+    if (ctx.red.activa) ctx.red.vaciar(dt);
+    if (!dibujar) return;
     ctx.mundo.actualizar(dt, ctx.camara, DISTANCIAS[ctx.ajustes.g.distancia]);
     ctx.iluminacion.actualizar(dt, ctx.camara, t);
     ctx.particulas.setEscala(ctx.renderer.domElement.height, ctx.camara.fov);
@@ -164,7 +161,9 @@ async function arrancar() {
     ctx.rendimiento.actualizar(dt);
     ctx.motor.render(dt);
     ctx.entrada.finFotograma();
-  });
+  };
+  ctx.motor.iniciar(dt => ctx.paso(dt, true));
+  latidoEnSegundoPlano(ctx);
 
   progreso('Listo.', 1);
   const b = $('bEntrar');
@@ -184,6 +183,25 @@ async function arrancar() {
       ctx.audio.setMusica('menu');
     } catch (e) { console.warn('Audio no disponible', e); }
     ctx.interfaz.mostrarMenu();
+  };
+}
+
+/**
+ * Con la pestaña oculta el navegador detiene requestAnimationFrame. En una sala eso
+ * congelaría la partida de los demás (el anfitrión simula los zombis), así que un Worker
+ * —cuyos temporizadores no se frenan— marca el ritmo para simular sin dibujar.
+ */
+function latidoEnSegundoPlano(ctx) {
+  let w;
+  try {
+    const url = URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 50);'], { type: 'text/javascript' }));
+    w = new Worker(url);
+  } catch (e) { return; }                       // sin Workers: se queda como antes
+  let ultimo = performance.now();
+  w.onmessage = () => {
+    const ahora = performance.now(), dt = Math.min(0.1, (ahora - ultimo) / 1000);
+    ultimo = ahora;
+    if (document.hidden && ctx.partida.modoSala) { try { ctx.paso(dt, false); } catch (e) { console.error(e); } }
   };
 }
 

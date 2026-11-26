@@ -59,14 +59,22 @@ export class Sala extends DurableObject {
     const yo = ws.deserializeAttachment();
     if (!yo) return;
     const s = this.estado();
-    const destino = s.destino(yo.id, msg.t);
-    if (destino === 'descartar') return;
-    msg.de = yo.id;
-    const texto = JSON.stringify(msg);
-    if (destino === 'todos') this.difundir(texto, yo.id);
-    else if (destino === 'anfitrion') {
-      const anf = this.abiertos().find(w => w.deserializeAttachment().id === s.anfitrionId);
-      if (anf) anf.send(texto);
+    // paquete: cada mensaje va a su destino; a cada receptor le llega un solo paquete
+    const lista = msg.t === T.PAQUETE ? (Array.isArray(msg.m) ? msg.m.slice(0, 64) : []) : [msg];
+    const paraTodos = [], paraAnf = [];
+    for (const m of lista) {
+      if (!m || typeof m !== 'object' || typeof m.t !== 'string' || m.t === T.PAQUETE) continue;
+      const destino = s.destino(yo.id, m.t);
+      if (destino === 'todos') paraTodos.push(m);
+      else if (destino === 'anfitrion') paraAnf.push(m);
+    }
+    if (!paraTodos.length && !paraAnf.length) return;
+    const empaquetar = l => JSON.stringify(l.length === 1 ? { ...l[0], de: yo.id } : { t: T.PAQUETE, de: yo.id, m: l });
+    for (const w of this.abiertos()) {
+      const id = w.deserializeAttachment().id;
+      if (id === yo.id) continue;
+      const l = id === s.anfitrionId ? paraTodos.concat(paraAnf) : paraTodos;
+      if (l.length) try { w.send(empaquetar(l)); } catch {}
     }
   }
 

@@ -1,12 +1,15 @@
-import { T, MAX_BYTES, normalizarCodigo } from './protocolo.js';
+import { T, MAX_BYTES, RED_HZ, normalizarCodigo } from './protocolo.js';
 
 /**
  * Cliente de red de las salas multijugador (WebSocket al Durable Object de la sala).
  *
  * - La dirección del servidor sale de la página (mismo Worker que sirve el juego);
  *   se puede cambiar con ?servidor=ws://host:puerto (p. ej. un servidor en la laptop).
- * - Los mensajes de cada tipo se agrupan: `enviar` guarda el último de cada tipo
- *   "continuo" (posición, zombis) y `vaciar()` los manda juntos una vez por ciclo.
+ * - Envío por ticks fijos (RED_HZ, 12 por segundo): todo lo pendiente sale en UN paquete
+ *   por tick. Cloudflare factura por mensaje entrante, no por tamaño, así que esto fija
+ *   el gasto en 12 mensajes/s por jugador sin importar los FPS ni cuántas cosas pasen.
+ *   De los tipos "continuos" (estado del jugador, zombis) solo se manda el último.
+ *   Antes de cada envío se llama a los `alTick` (los sistemas escriben ahí su estado).
  * - Sin reconexión automática: si se cae la conexión la partida en sala termina
  *   con un aviso (el servidor asignaría un id nuevo y otro anfitrión).
  */
@@ -22,6 +25,9 @@ export class Red {
     this.perfiles = new Map();          // id → { n: nombre, skin }
     this.oyentes = new Map();
     this.pendientes = new Map();        // tipo continuo → último mensaje sin enviar
+    this.cola = [];                     // mensajes puntuales (eventos, daño) hasta el próximo tick
+    this.tickT = 0;
+    this.antesDeTick = [];
     this.enviados = 0; this.recibidos = 0;
     this.pingT = null;
   }
@@ -37,6 +43,8 @@ export class Red {
     this.oyentes.get(tipo).push(fn);
   }
   emitir(tipo, msg) { for (const fn of this.oyentes.get(tipo) || []) fn(msg); }
+  /** fn(dtTick) se llama justo antes de cada envío. */
+  alTick(fn) { this.antesDeTick.push(fn); }
 
   /** Conecta a la sala. Rechaza con Error('codigo' | 'llena' | 'conexion'). */
   conectar(codigo) {
@@ -53,6 +61,14 @@ export class Red {
         let m; try { m = JSON.parse(e.data); } catch { return; }   // 'pong' y basura
         if (!m || typeof m.t !== 'string') return;
         this.recibidos++;
+        if (m.t === T.PAQUETE) {
+          if (!Array.isArray(m.m)) return;
+          for (const s of m.m) if (s && typeof s.t === 'string' && s.t !== T.PAQUETE) { s.de = m.de; procesar(s); }
+          return;
+        }
+        procesar(m);
+      };
+      const procesar = m => {
         if (m.t === T.HOLA) {
           dentro = true; clearTimeout(limite);
           Object.assign(this, { activa: true, id: m.id, esAnfitrion: m.anfitrion, codigo: cod, jugadores: m.jugadores });
@@ -76,17 +92,34 @@ export class Red {
     });
   }
 
-  /** Mensajes continuos se agrupan hasta `vaciar()`; los demás salen al momento. */
+  /** Pone un mensaje en el próximo paquete (los continuos sustituyen al anterior del mismo tipo). */
   enviar(tipo, datos = {}) {
     if (!this.activa) return;
     const m = { t: tipo, ...datos };
-    if (CONTINUOS.has(tipo)) { this.pendientes.set(tipo, m); return; }
-    this.mandar(m);
+    if (CONTINUOS.has(tipo)) this.pendientes.set(tipo, m);
+    else this.cola.push(m);
   }
-  vaciar() {
-    for (const m of this.pendientes.values()) this.mandar(m);
-    this.pendientes.clear();
+
+  /** Cada fotograma: cuando toca tick, recoge el estado de los sistemas y manda un paquete. */
+  vaciar(dt = 0) {
+    this.tickT -= dt;
+    if (this.tickT > 0) return;
+    const paso = 1 / RED_HZ;
+    this.tickT = Math.max(0, this.tickT + paso);          // ritmo fijo aunque los FPS varíen
+    for (const fn of this.antesDeTick) fn(paso);
+    const l = [...this.pendientes.values(), ...this.cola];
+    this.pendientes.clear(); this.cola = [];
+    if (!l.length) return;
+    // si el paquete se pasa de tamaño, se parte (no debería pasar: ~60 zombis ≈ 3 KB)
+    let actual = [], bytes = 0;
+    for (const m of l) {
+      const n = JSON.stringify(m).length;
+      if (actual.length && bytes + n > MAX_BYTES - 200) { this.mandarPaquete(actual); actual = []; bytes = 0; }
+      actual.push(m); bytes += n;
+    }
+    this.mandarPaquete(actual);
   }
+  mandarPaquete(l) { this.mandar(l.length === 1 ? l[0] : { t: T.PAQUETE, m: l }); }
   mandar(m) {
     const ws = this.ws;
     if (!ws || ws.readyState !== 1) return;
@@ -98,7 +131,7 @@ export class Red {
   limpiar() {
     clearInterval(this.pingT); this.pingT = null;
     this.activa = false; this.ws = null; this.id = null; this.esAnfitrion = false; this.codigo = null;
-    this.jugadores = []; this.perfiles.clear(); this.pendientes.clear();
+    this.jugadores = []; this.perfiles.clear(); this.pendientes.clear(); this.cola = []; this.tickT = 0;
   }
 
   cerrar() {

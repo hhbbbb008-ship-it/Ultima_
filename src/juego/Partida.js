@@ -18,6 +18,7 @@ export class Partida {
     this.dios = false;            // modo de pruebas (invulnerable)
     this.menuT = 0;
     ctx.eventos.on('jugador:muerto', () => {
+      if (this.modoSala && (this.estado === 'jugando' || this.estado === 'pausa')) { this.caer(); return; }
       if (this.estado !== 'jugando') return;
       this.estado = 'muriendo'; this.muerteT = 0;
       ctx.audio.setMusica('derrota');
@@ -42,6 +43,50 @@ export class Partida {
       if (m.e === 'inicio' && !red.esAnfitrion && !(this.modoSala && this.jugando && this.mapa === m.mapa)) this.nuevaSala(m.modo, m.mapa);
     });
     red.alMensaje(T.ENTRO, () => { if (red.esAnfitrion && this.modoSala) this.anunciarInicio(); });
+    red.alMensaje(T.FIN, m => {
+      if (!this.modoSala || red.esAnfitrion || (m.motivo !== 'victoria' && m.motivo !== 'derrota')) return;
+      this.terminar(m.motivo === 'victoria');
+    });
+    // los caídos vuelven al terminar cada oleada (en el cliente el evento lo genera la replicación)
+    this.ctx.eventos.on('oleada:fin', () => { if (this.modoSala && this.estado === 'caido') this.reaparecer(); });
+  }
+
+  /** En sala, morir te deja como espectador hasta que acabe la oleada. */
+  caer() {
+    this.estado = 'caido'; this.caidoT = 0; this.todosCaidosT = 0;
+    this.ctx.interfaz.aviso('HAS CAÍDO', 'Reaparecerás al terminar la oleada si tu equipo resiste', 4, 'jefe');
+    this.ctx.audio.setMusica('derrota');
+  }
+
+  reaparecer() {
+    const c = this.ctx, i = this.defMapa.inicio;
+    c.jugador.revivir(new THREE.Vector3(i.x, 0, i.z), i.yaw);
+    c.armas.escena.visible = true;
+    this.estado = 'jugando'; this.sinRatonT = 0;
+    c.interfaz.mostrarJuego();
+    c.interfaz.aviso('¡DE VUELTA!', 'Tu equipo aguantó la oleada', 2.5, 'exito');
+    this.pedirRaton();
+  }
+
+  /** Cámara de espectador: detrás de un compañero vivo (o la de la caída si no queda ninguno). */
+  camaraEspectador(dt) {
+    this.caidoT += dt;
+    if (this.caidoT < 1.6) return;
+    const r = [...this.ctx.remotos.lista.values()].find(r => r.vivo);
+    if (!r) return;
+    const p = r.raiz.position, yaw = r.raiz.rotation.y, cam = this.ctx.camara;
+    const objetivo = this._esp || (this._esp = new THREE.Vector3());
+    objetivo.set(p.x + Math.sin(yaw) * 3.2, p.y + 2.4, p.z + Math.cos(yaw) * 3.2);
+    cam.position.lerp(objetivo, Math.min(1, dt * 4));
+    cam.lookAt(p.x, p.y + 1.4, p.z);
+  }
+
+  /** Anfitrión: si no queda nadie en pie (con margen para los mensajes en vuelo), derrota para todos. */
+  comprobarDerrota(dt) {
+    if (!this.modoSala || !this.ctx.red.esAnfitrion || (!this.jugando && this.estado !== 'pausa')) return;
+    const alguien = this.ctx.zombis.objetivos().some(o => o.vivo);
+    this.todosCaidosT = alguien ? 0 : (this.todosCaidosT || 0) + dt;
+    if (this.todosCaidosT > 1) this.terminar(false);
   }
 
   anunciarInicio() { this.ctx.red.enviar(T.EVENTO, { e: 'inicio', modo: this.modo, mapa: this.mapa }); }
@@ -175,14 +220,16 @@ export class Partida {
   terminar(victoria) {
     if (this.estado === 'fin') return;
     const c = this.ctx;
+    if (this.modoSala && c.red.esAnfitrion) c.red.mandar({ t: T.FIN, motivo: victoria ? 'victoria' : 'derrota' });
     this.estado = 'fin';
     this.esperandoRaton = false; c.interfaz.mostrarEsperaRaton(false);
     c.entrada.liberar();
     c.entrada.soltarTodo();
-    Guardado.borrar();
+    // en sala no se toca la partida guardada ni los récords de un jugador
+    if (!this.modoSala) Guardado.borrar();
     const oleada = c.oleadas.n;
     const p = c.puntuacion;
-    const record = Guardado.registrar(this.modo, this.mapa, p.total, oleada);
+    const record = this.modoSala ? false : Guardado.registrar(this.modo, this.mapa, p.total, oleada);
     c.audio.setMusica(victoria ? 'calma' : 'derrota');
     c.interfaz.mostrarFin({
       victoria, modo: MODOS[this.modo].nombre, mapa: this.defMapa.nombre, oleada, total: p.total, bajas: p.bajas, cabezas: p.cabezas,
@@ -194,7 +241,8 @@ export class Partida {
   actualizar(dt) {
     const c = this.ctx;
     if (this.estado === 'menu' || this.estado === 'fin') { this.camaraMenu(dt); return; }
-    if (this.estado === 'pausa') return;
+    // en sala la pausa es solo un menú encima: la partida de los demás no se puede detener
+    if (this.estado === 'pausa' && !this.modoSala) return;
     // en PC, si el ratón no está capturado la partida no corre (los zombis no atacan a un jugador sin cámara)
     if (this.estado === 'jugando' && this.necesitaRaton && !c.entrada.bloqueado) {
       this.sinRatonT += dt;
@@ -209,10 +257,12 @@ export class Partida {
     c.granadas.actualizar(dt);
     c.municion.actualizar(dt);
     c.suministros.actualizar(dt);
-    if (this.estado === 'jugando') {
+    if (this.estado === 'jugando' || (this.modoSala && (this.estado === 'pausa' || this.estado === 'caido'))) {
       if (!(this.modoSala && !c.red.esAnfitrion)) c.oleadas.actualizar(dt);     // en sala las lleva el anfitrión
       c.puntuacion.actualizar(dt);
     }
+    if (this.estado === 'caido') this.camaraEspectador(dt);
+    this.comprobarDerrota(dt);
     if (this.estado === 'muriendo') {
       this.muerteT += dt;
       if (this.muerteT > 3) this.terminar(false);
@@ -227,5 +277,5 @@ export class Partida {
     if (cam.fov !== 70) { cam.fov = 70; cam.updateProjectionMatrix(); }
   }
 
-  get jugando() { return this.estado === 'jugando' || this.estado === 'muriendo'; }
+  get jugando() { return this.estado === 'jugando' || this.estado === 'muriendo' || this.estado === 'caido'; }
 }

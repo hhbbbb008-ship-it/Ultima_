@@ -13,9 +13,11 @@ export const T = Object.freeze({
   DANO: 'dan',        // cliente → anfitrión: daño a un zombi
   EVENTO: 'eve',      // anfitrión → todos: sucesos puntuales (oleada, caída, reaparición)
   FIN: 'fin',         // anfitrión o servidor → todos: la partida termina
+  PAQUETE: 'paq',     // varios mensajes en uno: {m: [...]} (un solo mensaje entrante facturable)
 });
 
 export const MAX_BYTES = 16384;
+export const RED_HZ = 12;           // envíos por segundo de cada jugador (un paquete por envío)
 export const MAX_JUGADORES = 4;
 
 /** Código de sala: exactamente 4 letras A–Z (se aceptan minúsculas y espacios alrededor). */

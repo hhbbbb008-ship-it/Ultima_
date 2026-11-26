@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { T } from './protocolo.js';
+import { T, RED_HZ } from './protocolo.js';
 import { ARMAS } from '../armas/DefArmas.js';
 import { crearCuerpoJugador, sanearSkin, SKIN_DEFECTO } from '../jugador/CuerpoJugador.js';
 
@@ -13,8 +13,7 @@ import { crearCuerpoJugador, sanearSkin, SKIN_DEFECTO } from '../jugador/CuerpoJ
  * el remoto se queda en el último estado conocido. Un salto grande (reaparición) se
  * aplica de golpe en vez de "volar" por el mapa.
  */
-const RETRASO = 110;           // ms de retraso de interpolación (~1,5 envíos a 15 Hz)
-const ENVIO_HZ = 15;
+const RETRASO = 130;           // ms de retraso de interpolación (~1,5 envíos a RED_HZ)
 const DESLIZ = 150;           // ms para llegar a la posición nueva tras un corte de mensajes
 const SALTO = 6;               // m: más que esto entre dos estados = teletransporte
 const COLORES = [0x3d8bfd, 0xf2a93b, 0x4cc38a, 0xd65db1];
@@ -31,6 +30,7 @@ export class Remotos {
     this.skinPorDefecto = SKIN_DEFECTO;
     ctx.eventos.on('arma:disparo', () => { if (ctx.partida.modoSala) this.disparos++; });
     const red = ctx.red;
+    red.alTick(() => { const P = ctx.partida; if (P.modoSala && P.estado !== 'menu' && P.estado !== 'fin') this.enviarEstado(); });
     red.alMensaje(T.JUGADOR, m => this.aplicar(m));
     red.alMensaje(T.SALIO, m => this.quitar(m.id));
     ctx.eventos.on('red:caida', () => this.limpiar());
@@ -51,7 +51,7 @@ export class Remotos {
     r.vivo = m.vivo !== false;
     // disparos desde el último estado: se reproducen repartidos en el intervalo de envío
     const ds = Math.min(20, Math.max(0, m.ds | 0));
-    if (ds) { r.pend += ds; r.pendInt = (1 / ENVIO_HZ) / ds; }
+    if (ds) { r.pend += ds; r.pendInt = (1 / RED_HZ) / ds; }
     // objetivo para la IA del anfitrión: último estado recibido (sin el retraso de interpolación)
     const o = r.obj, dtv = ult ? Math.max(0.03, (e.t - ult.t) / 1000) : 1;
     if (ult) o.vel.set((e.x - o.pos.x) / dtv, 0, (e.z - o.pos.z) / dtv).clampLength(0, 8);
@@ -145,11 +145,8 @@ export class Remotos {
     if (this.ctx.red.esAnfitrion) this.ctx.zombis.alertar(p, 38);
   }
 
-  /** Envía el estado propio a ENVIO_HZ (se agrupa y sale en red.vaciar()). */
-  enviarEstado(dt) {
-    this.envioT -= dt;
-    if (this.envioT > 0) return;
-    this.envioT = 1 / ENVIO_HZ;
+  /** Estado propio para el próximo paquete (lo llama la red en cada tick). */
+  enviarEstado() {
     const j = this.ctx.jugador;
     this.ctx.red.enviar(T.JUGADOR, {
       p: [r2(j.pos.x), r2(j.pos.y), r2(j.pos.z)], yaw: r2(j.yaw), pitch: r2(j.pitch),

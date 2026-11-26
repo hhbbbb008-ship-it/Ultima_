@@ -16,8 +16,6 @@ import { TIPOS } from '../enemigos/TiposZombi.js';
 const TIPOS_L = Object.keys(TIPOS);
 const ESTADOS = ['emerger', 'perseguir', 'atacar', 'aturdido', 'escupir', 'preparaCarga', 'cargando', 'muerto'];
 const OLEADA = ['inactiva', 'preparacion', 'activa', 'completada'];
-const ZOMBIS_HZ = 10;
-const DANO_HZ = 10;
 const MAX_DANOS = 150;          // entradas por mensaje (cada una ~40 bytes, muy por debajo de 16 KB)
 const r1 = v => Math.round(v * 10) / 10;
 const r2 = v => Math.round(v * 100) / 100;
@@ -26,9 +24,13 @@ const _v = new THREE.Vector3();
 export class Replicacion {
   constructor(ctx) {
     this.ctx = ctx;
-    this.zombisT = 0; this.danoT = 0;
     this.danos = [];
     const red = ctx.red, ev = ctx.eventos;
+    // en cada tick de red: el anfitrión manda la instantánea; el cliente, el daño acumulado
+    red.alTick(() => {
+      if (this.anfitrion) red.enviar(T.ZOMBIS, this.instantanea());
+      else if (this.cliente) this.vaciarDanos();
+    });
     red.alMensaje(T.ZOMBIS, m => { if (this.cliente) this.aplicarInstantanea(m); });
     red.alMensaje(T.DANO, m => { if (this.anfitrion) this.aplicarDanos(m); });
     red.alMensaje(T.EVENTO, m => this.evento(m));
@@ -45,16 +47,6 @@ export class Replicacion {
 
   get anfitrion() { return this.ctx.partida.modoSala && this.ctx.red.esAnfitrion; }
   get cliente() { return this.ctx.partida.modoSala && this.ctx.red.activa && !this.ctx.red.esAnfitrion; }
-
-  actualizar(dt) {
-    if (this.anfitrion) {
-      this.zombisT -= dt;
-      if (this.zombisT <= 0) { this.zombisT = 1 / ZOMBIS_HZ; this.ctx.red.enviar(T.ZOMBIS, this.instantanea()); }
-    } else if (this.cliente) {
-      this.danoT -= dt;
-      if (this.danoT <= 0 && this.danos.length) { this.danoT = 1 / DANO_HZ; this.vaciarDanos(); }
-    }
-  }
 
   // ------------------------------------------------------------------ anfitrión
   /** [id, tipo, x, z, yaw, estado, vida, armadura+casco] por zombi vivo, más el estado de la oleada. */
@@ -90,13 +82,10 @@ export class Replicacion {
   /** Lo llama Zombi cuando una réplica recibe daño en este equipo. */
   registrarDano(z, dano, parte, fuente, dir) {
     this.danos.push([z.id, r1(dano), parte, fuente, dir ? r2(dir.x) : 0, dir ? r2(dir.z) : 1]);
-    if (this.danos.length >= MAX_DANOS) this.vaciarDanos();
   }
 
   vaciarDanos() {
-    if (!this.danos.length) return;
-    this.ctx.red.enviar(T.DANO, { l: this.danos });
-    this.danos = [];
+    while (this.danos.length) this.ctx.red.enviar(T.DANO, { l: this.danos.splice(0, MAX_DANOS) });
   }
 
   aplicarInstantanea(m) {

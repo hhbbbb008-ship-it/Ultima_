@@ -286,6 +286,15 @@ export class Jugador {
     }
   }
 
+  /** Reaparición en sala: salud completa en pos, conservando inventario y equipo. */
+  revivir(pos, yaw) {
+    this.pos.copy(pos); this.vel.set(0, 0, 0);
+    this.yaw = yaw; this.pitch = 0;
+    this.salud = this.saludMax; this.vivo = true; this.muerteT = 0;
+    this.tiempoSinDano = 99; this.sacudida = 0; this.caidaCam = 0;
+    this.ctx.eventos.emit('jugador:revivido');
+  }
+
   /** Cura (botiquín). Devuelve la cantidad realmente curada. */
   curar(cant) {
     const antes = this.salud;
