@@ -4,9 +4,13 @@ Shooter de supervivencia por oleadas en 3D para navegador de escritorio.
 Está hecho con **Three.js (WebGL 2)** y **Web Audio**, sin paso de compilación ni dependencias que instalar.
 Todos los recursos son originales y **se generan por código al arrancar**: texturas, mapas de normales, modelos de armas y zombis, sonidos y música.
 
-## Publicarlo en Netlify (o cualquier hosting estático)
+## Publicarlo
 
-Arrastra la carpeta (o el .zip) a Netlify → *Deploy manually*. No necesita comando de compilación.
+**Con multijugador (Cloudflare Workers, recomendado):** el juego y el servidor de salas van juntos en un mismo Worker
+(`wrangler.jsonc`). Se publica desde GitHub: cada `git push` vuelve a desplegar. Pasos en [Multijugador → Publicar](#publicar-en-cloudflare-desde-github).
+
+**Solo un jugador (cualquier hosting estático):** arrastra la carpeta (o el .zip) a Netlify, Cloudflare o similar. Funciona todo
+menos el botón *Multijugador*, que necesita el servidor de salas.
 
 ## Cómo ejecutarlo
 
@@ -24,6 +28,50 @@ npx serve .
 
 Navegadores probados: Chrome / Edge 120+ y Firefox 120+. Requiere **WebGL 2**.
 Para publicarlo en internet basta con subir la carpeta a cualquier hosting estático (GitHub Pages, Netlify, Vercel, un servidor Apache/Nginx…).
+
+## Multijugador cooperativo
+
+Hasta **4 jugadores** contra las mismas oleadas. Menú principal → **Multijugador**:
+
+1. Escribe tu nombre y elige tu aspecto (ropa, piel, gorra, mochila). Se guarda en el navegador.
+2. **Crear sala** te da un código de 4 letras (p. ej. `KZMR`); compártelo. Tus amigos lo escriben y pulsan **Unirse**.
+3. El anfitrión (quien creó la sala) elige mapa y modo en *Mapa y modo*, pulsa **Elegir equipo y empezar** y todos entran.
+   Quien llegue tarde se une a la partida en curso.
+
+Reglas de la sala:
+- Zombis, oleadas y daño son compartidos; cada uno usa su equipo, su munición y sus objetos.
+- **Puntos, monedas y lo que suelta un zombi son para quien lo mata.** El bono de oleada es para todos.
+- Hay +50 % de zombis por cada jugador extra (máximo 60 a la vez).
+- Si caes, quedas como espectador detrás de un compañero y **reapareces al terminar la oleada**. Si caen todos, se acaba la partida.
+- La pausa solo abre el menú: la partida de los demás sigue.
+- Si el anfitrión se va, la sala se cierra y todos vuelven al menú. Si se cae tu conexión, vuelves al menú y puedes entrar de nuevo con el código.
+- Jugar en sala no toca tu partida guardada ni tus récords de un jugador.
+
+### Cómo funciona por dentro
+- **El anfitrión simula** zombis y oleadas en su navegador, como en solitario; los zombis van a por el jugador vivo más cercano.
+  Los demás ven **réplicas** que siguen la instantánea del anfitrión, interpoladas para que se muevan suave.
+- Los impactos se calculan **en el navegador de quien dispara** (respuesta inmediata) y el anfitrión aplica el daño real y confirma la baja.
+- El servidor (`servidor/`) es un **Durable Object** por sala que solo reenvía mensajes. Usa la API de hibernación: una sala vacía no gasta.
+- Cada jugador envía **un paquete 12 veces por segundo**, con todo lo que tenga que decir en ese momento.
+  Así una partida de 4 gasta unas 9.000 solicitudes facturables por hora: **unas 11 horas de juego al día con el plan gratis de Cloudflare**
+  (con 2 jugadores, el doble). Lo mide `pruebas/multi.py uso`.
+- Si la pestaña del anfitrión queda en segundo plano, la partida sigue simulándose (el navegador no la congela para los demás).
+
+### Probar en tu computadora
+```bash
+npm install              # instala wrangler (solo la primera vez)
+npx wrangler dev         # juego + salas en http://localhost:8787
+```
+Abre dos ventanas (o una normal y una de incógnito) en `http://localhost:8787` y crea/únete a una sala.
+Para usar un servidor de salas en otra máquina (p. ej. tu laptop con un túnel), añade `?servidor=wss://tu-servidor` a la dirección del juego.
+
+### Publicar en Cloudflare desde GitHub
+1. Sube esta carpeta a un repositorio de GitHub (puede ser privado).
+2. En el panel de Cloudflare: **Workers & Pages** → tu Worker **square-river-fc0b** → **Settings** → **Builds** → **Connect** y elige el repositorio.
+3. Comando de despliegue: `npx wrangler deploy` (sin comando de compilación). Guarda.
+4. Cada `git push` a la rama principal vuelve a publicar el juego y el servidor juntos.
+
+Si tu Worker tiene otro nombre, cámbialo en `name` dentro de `wrangler.jsonc`. El plan gratis basta: los Durable Objects con SQLite están incluidos.
 
 ## Controles (reasignables en Configuración → Controles)
 
@@ -264,7 +312,7 @@ src/
   config/               Ajustes (perfiles, opciones, controles) y Graficos (aplicación en vivo)
   mundo/                Mundo (constructor de mapas, carga/descarga), Cielo, Iluminacion
   mundo/mapas/          Barrio Cenizas, Hospital San Judas, Ruta 9, Granja Los Álamos
-  jugador/              Controlador en primera persona (movimiento, dash de esquive con cargas, salud)
+  jugador/              Controlador en primera persona (movimiento, dash de esquive con cargas, salud) y cuerpo visible con skins (CuerpoJugador)
   armas/                Definiciones, modelos procedurales y sistema de armas
   enemigos/             Tipos, modelo con esqueleto, cuerpo del .glb (CuerpoGLB), IA del zombi, navegación, gestor
   efectos/              Partículas GPU, calcas y proyectiles de ácido
@@ -272,7 +320,10 @@ src/
   ui/                   Interfaz (menús, configuración y HUD)
   audio/                Síntesis de sonido, audio 3D y música generativa
   rendimiento/          Medidor y adaptación automática
-pruebas/                Pruebas automáticas con Playwright (Python)
+  red/                  Multijugador: protocolo, cliente de red (Red), jugadores remotos (Remotos), réplica de zombis y oleadas (Replicacion)
+servidor/               Worker de Cloudflare: rutas (index.js), sala como Durable Object (Sala.js) y sus reglas (SalaLogica.js)
+wrangler.jsonc          Configuración del Worker (archivos estáticos + Durable Object de salas)
+pruebas/                Pruebas automáticas con Playwright (Python) y del servidor (Node)
 ```
 
 Para depurar, el contexto del juego está disponible en la consola como `window.__juego`.
@@ -290,6 +341,17 @@ python3 pruebas/municion.py   # cajas de munición, reparto, reabastecimiento, c
 python3 pruebas/dash.py       # 3 cargas, cuarto bloqueado, recarga de una en una, invulnerabilidad, bebida
 python3 pruebas/recarga.py    # recarga con C.BONO_RECARGA (subfusil = 2,0 / 1,08 s)
 python3 pruebas/movil.py      # celular 844×390: botón ⇥ y cargas visibles y respondiendo al toque
+```
+
+Multijugador (necesitan el servidor local de salas):
+
+```bash
+npm test                          # reglas de la sala (node:test, sin Cloudflare)
+sh pruebas/servidor_local.sh      # arranca `wrangler dev` desde una copia en /tmp (no se reinicia al editar)
+node pruebas/red_sala.mjs         # servidor: anfitrión, reenvío, paquetes, sala llena, basura, cierre
+python3 pruebas/multi.py          # 2 navegadores: sala, remotos, zombis, daño, skins, reglas y consumo
+python3 pruebas/multi.py uso      # solo la medición de mensajes por segundo y horas de juego en el plan gratis
+node pruebas/red_sala.mjs wss://square-river-fc0b.hhbbbb008.workers.dev   # contra el servidor publicado
 ```
 
 Si Chromium no está en `/opt/pw-browsers/chromium`, indica su ruta con la variable `CHROMIUM` (o instala el de Playwright con `python3 -m playwright install chromium`).
