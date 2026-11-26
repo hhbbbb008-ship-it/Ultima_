@@ -38,6 +38,7 @@ import { MAPAS } from './mundo/mapas/index.js';
 import { Guardado } from './juego/Guardado.js';
 import { Red } from './red/Red.js';
 import { MenuSala } from './ui/MenuSala.js';
+import { Remotos } from './red/Remotos.js';
 
 const $ = id => document.getElementById(id);
 const fotograma = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
@@ -123,6 +124,7 @@ async function arrancar() {
   ctx.tienda = new Tienda(ctx);
   ctx.red = new Red(ctx);
   ctx.partida = new Partida(ctx);
+  ctx.remotos = new Remotos(ctx);
   ctx.rendimiento = new Rendimiento(ctx);
   ctx.graficos = new Graficos(ctx);
   ctx.interfaz = new Interfaz(ctx);
@@ -144,6 +146,10 @@ async function arrancar() {
     t += dt;
     ctx.mando.actualizar(dt);
     ctx.partida.actualizar(dt);
+    if (ctx.partida.modoSala) {
+      ctx.remotos.actualizar(dt);
+      if (ctx.partida.estado !== 'menu' && ctx.partida.estado !== 'fin') ctx.remotos.enviarEstado(dt);
+    }
     if (ctx.red.activa) ctx.red.vaciar();
     ctx.mundo.actualizar(dt, ctx.camara, DISTANCIAS[ctx.ajustes.g.distancia]);
     ctx.iluminacion.actualizar(dt, ctx.camara, t);

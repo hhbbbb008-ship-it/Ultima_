@@ -103,13 +103,66 @@ def lobby():
         comprobar('conectar' in c.eval_on_selector('#salaError', 'e => e.textContent').lower(), 'sin servidor avisa "no se pudo conectar"')
 
 
+def preparar(ps):
+    a = ps[0]
+    for p in ps:
+        abrir(p)
+    cod = crear(a, 'Ana')
+    for i, p in enumerate(ps[1:]):
+        unir(p, cod, ['Beto', 'Ceci', 'Dani'][i])
+        p.wait_for_function("() => window.__juego.red.activa", timeout=15_000)
+    a.wait_for_function(f"() => window.__juego.red.jugadores.length === {len(ps)}", timeout=15_000)
+    empezar_sala(a, ps)
+    return cod
+
+
+REMOTO = """() => { const r = [...window.__juego.remotos.lista.values()][0];
+    return r ? { x: r.raiz.position.x, z: r.raiz.position.z, visible: r.raiz.visible } : null }"""
+
+
+def remotos():
+    with jugadores(2) as (a, b):
+        preparar([a, b])
+        # el anfitrión se teletransporta y camina; el cliente lo ve llegar
+        a.evaluate("() => { const j = window.__juego.jugador; j.pos.set(3, j.pos.y, 3); }")
+        b.wait_for_timeout(1000)
+        r = b.evaluate(REMOTO)
+        comprobar(r and r['visible'] and abs(r['x'] - 3) < 1 and abs(r['z'] - 3) < 1, f'el cliente ve al anfitrión en su posición (±1 m): {r}')
+        ra = a.evaluate(REMOTO)
+        comprobar(ra is not None, 'el anfitrión también ve al cliente')
+        # pestaña "en segundo plano": deja de enviar 2 s → el remoto se queda quieto, sin derivar
+        a.evaluate("() => { window.__juego.red._vaciar = window.__juego.red.vaciar; window.__juego.red.vaciar = () => {}; }")
+        a.evaluate("() => { const j = window.__juego.jugador; j.pos.set(5, j.pos.y, 3); }")
+        b.wait_for_timeout(2000)
+        quieto = b.evaluate(REMOTO)
+        comprobar(abs(quieto['x'] - 3) < 0.5, f'sin mensajes el remoto no se mueve ni deriva ({quieto})')
+        a.evaluate("() => { window.__juego.red.vaciar = window.__juego.red._vaciar; }")
+        muestras = [quieto['x']]
+        for _ in range(16):
+            b.wait_for_timeout(25)
+            muestras.append(b.evaluate(REMOTO)['x'])
+        saltos = max(abs(muestras[i + 1] - muestras[i]) for i in range(len(muestras) - 1))
+        comprobar(abs(muestras[-1] - 5) < 0.5 and saltos < 1.2, f'al volver los mensajes se mueve suave hasta la nueva posición (salto máx {saltos:.2f} m, final {muestras[-1]:.2f})')
+        # pausa en sala: el mundo no se congela para los demás
+        a.evaluate("() => window.__juego.partida.pausar()")
+        a.evaluate("() => { const j = window.__juego.jugador; j.pos.set(6, j.pos.y, 6); }")
+        b.wait_for_timeout(800)
+        rp = b.evaluate(REMOTO)
+        comprobar(abs(rp['x'] - 6) < 1, f'con el anfitrión en pausa se sigue enviando su estado ({rp})')
+        # sale el cliente: el anfitrión deja de verlo
+        b.evaluate("() => window.__juego.partida.salirAlMenu()")
+        a.wait_for_function("() => window.__juego.remotos.lista.size === 0", timeout=10_000)
+        comprobar(True, 'cuando un jugador sale, su cuerpo desaparece para los demás')
+        sin_errores([a, b])
+
+
 def todo():
     for f in FASES.values():
         if f is not todo:
             f()
 
 
-FASES = {'lobby': lobby, 'todo': todo}
+FASES = {'lobby': lobby, 'remotos': remotos, 'todo': todo}
 
 if __name__ == '__main__':
     ejecutar('multi ' + FASE, FASES[FASE])

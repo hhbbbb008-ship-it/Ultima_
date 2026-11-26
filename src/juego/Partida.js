@@ -162,7 +162,7 @@ export class Partida {
   }
 
   salirAlMenu() {
-    if (this.modoSala) { this.modoSala = false; this.ctx.red?.cerrar(); }
+    if (this.modoSala) { this.modoSala = false; this.ctx.red?.cerrar(); this.ctx.remotos?.limpiar(); }
     this.estado = 'menu';
     this.esperandoRaton = false; this.ctx.interfaz.mostrarEsperaRaton(false);
     this.limpiarMundo();
